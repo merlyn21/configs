@@ -1,0 +1,40 @@
+version: '3'
+
+services:
+  postgres:
+    image: postgres
+    volumes:
+      - /opt/keycloak/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: keycloakdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: qwerty
+    restart: unless-stopped
+
+  keycloak:
+    image: jboss/keycloak
+    environment:
+      DB_VENDOR: postgres
+      DB_ADDR: postgres
+      DB_PORT: 5432
+      DB_DATABASE: keycloakdb
+      DB_SCHEMA: public
+      DB_USER: postgres
+      DB_PASSWORD: qwerty
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD:                                         
+      KEYCLOAK_FRONTEND_URL: 'https://url/auth'                          
+      PROXY_ADDRESS_FORWARDING: 'true'                                                   
+      REDIRECT_SOCKET: proxy-https
+
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    environment:
+      - TZ=Europe/Moscow
+    volumes:
+      - /opt/keycloak/nginx:/etc/nginx
+    ports:
+      - 80:80
+      - 443:443
