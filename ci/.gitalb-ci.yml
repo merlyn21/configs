@@ -1,0 +1,221 @@
+stages:
+  - test
+  - build
+  - manual
+  - any
+  - hotfix
+
+variables:
+  GITVERSION_KEY: "MajorMinorPatch"
+  GITVERSION_IMAGE: "gittools/gitversion:5.3.3-linux-debian.9-x64-netcoreapp2.1"
+  BUILD_IMAGE: "mcr.microsoft.com/dotnet/sdk:5.0-alpine"
+  
+
+build:
+  stage: build
+  tags:
+    - s27
+    - linux
+  script:
+    - bash ./deploy/checkout.sh
+    - GitVersion=$(python ./deploy/gitversion.py $GITVERSION_KEY "$GITVERSION_IMAGE")
+    - echo $GitVersion
+    - echo ${CI_COMMIT_REF_NAME}
+    - bash ./deploy/nuget_push.sh $GitVersion
+    - bash ./deploy/fix_in_version.sh $GitVersion $YT_TOKEN "$CI_COMMIT_MESSAGE"
+  only:
+    refs:
+      - /^release_.*$/
+      - master
+      
+hotfix_s27:
+  stage: hotfix
+  tags:
+    - s27
+    - linux
+  script:
+    - bash ./deploy/drop_release_ci.sh
+    - GitVersion=$(python ./deploy/gitversion.py "AssemblySemVer" "$GITVERSION_IMAGE")
+    - echo $GitVersion
+    - echo ${CI_COMMIT_REF_NAME}
+    - bash ./deploy/nuget_push.sh $GitVersion
+    - path_to_appsettings="deploy/config/27/appsettings.json"
+    - docker stop erp_s2
+    - rm -rf /opt/erp/pub
+    - cp -r $(pwd)/pub /opt/erp 
+    - /bin/cp $path_to_appsettings /opt/erp/pub
+    - docker start erp_s2 
+  when: manual
+  only:
+    refs:
+      - /^hotfix_.*$/
+
+hotfix_s28:
+  stage: hotfix
+  tags:
+    - linux
+    - dev
+  script:
+    - bash ./deploy/drop_release_ci.sh
+    - GitVersion=$(python ./deploy/gitversion.py "AssemblySemVer" "$GITVERSION_IMAGE")
+    - echo $GitVersion
+    - echo ${CI_COMMIT_REF_NAME}
+    - bash ./deploy/nuget_push.sh $GitVersion
+    - path_to_appsettings="deploy/config/28/appsettings.json"
+    - docker stop erp_ss
+    - rm -rf /opt/erp/pub
+    - cp -r $(pwd)/pub /opt/erp 
+    - /bin/cp $path_to_appsettings /opt/erp/pub
+    - docker start erp_ss
+  when: manual
+  only:
+    refs:
+      - /^hotfix_.*$/
+
+
+test_before_merge:
+  stage: test
+  tags:
+    - linux
+    - dev
+  script:
+    - GitVersion=$(python ./deploy/gitversion.py $GITVERSION_KEY "$GITVERSION_IMAGE")
+    - echo $GitVersion
+    - ./deploy/bmerge.sh
+  only:
+    refs:
+      - merge_requests
+
+dotnet_test:
+  stage: test
+  tags:
+    - linux
+    - dev
+  script:
+    - GitVersion=$(python ./deploy/gitversion.py $GITVERSION_KEY "$GITVERSION_IMAGE")
+    - echo $GitVersion
+    - bash ./deploy/dotnet_test.sh
+  when: manual
+
+deploy_s27:
+  stage: manual
+  tags:
+    - linux
+    - s27
+  script:
+    - bash ./deploy/checkout.sh
+    - GitVersion=$(python ./deploy/gitversion.py $GITVERSION_KEY "$GITVERSION_IMAGE")
+    - echo $GitVersion
+    - path_to_appsettings="deploy/config/27/appsettings.json"
+    - bash ./deploy/inst_package.sh "$GitVersion" "/opt/erp/pub" "erp_s2" "$path_to_appsettings"
+  when: manual
+  only:
+    refs:
+      - /^release_.*$/
+      - master
+
+deploy_s28:
+  stage: manual
+  tags:
+    - linux
+    - dev
+  script:
+    - bash ./deploy/checkout.sh
+    - GitVersion=$(python ./deploy/gitversion.py $GITVERSION_KEY "$GITVERSION_IMAGE")
+    - echo $GitVersion
+    - path_to_appsettings="deploy/config/28/appsettings.json"
+    - bash ./deploy/inst_package.sh "$GitVersion" "/opt/erp/pub" "erp_ss" "$path_to_appsettings"
+  when: manual
+  only:
+    refs:
+      - /^release_.*$/
+      - master
+
+deploy_s27_from_any:
+  stage: any
+  tags:
+    - linux
+    - s27
+  script:
+    - bash ./deploy/checkout.sh
+    - GitVersion=$(python ./deploy/gitversion.py "SemVer" "$GITVERSION_IMAGE")
+    - echo $GitVersion
+    - path_to_appsettings="deploy/config/27/appsettings.json"
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build" -e MSBUILDSINGLELOADCONTEXT='1' $BUILD_IMAGE dotnet publish Intelkon.Erp.Blazor.ServerSide --configuration Release -o pub -f net5.0
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm root
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm install
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm run build
+    - cp -R $(pwd)/Intelkon.Erp.Blazor.ServerSide/wwwroot/* $(pwd)/pub/wwwroot
+    - docker stop erp_s2
+    - rm -rf /opt/erp/pub
+    - cp -r $(pwd)/pub /opt/erp 
+    - /bin/cp $path_to_appsettings /opt/erp/pub
+    - docker start erp_s2    
+  when: manual
+  
+deploy_s28_from_any:
+  stage: any
+  tags:
+    - linux
+    - dev
+  script:
+    - bash ./deploy/checkout.sh
+    - GitVersion=$(python ./deploy/gitversion.py "SemVer" "$GITVERSION_IMAGE")
+    - echo $GitVersion
+    - path_to_appsettings="deploy/config/28/appsettings.json"
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build" -e MSBUILDSINGLELOADCONTEXT='1' $BUILD_IMAGE dotnet publish Intelkon.Erp.Blazor.ServerSide --configuration Release -o pub -f net5.0
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm root
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm install
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm run build
+    - cp -R $(pwd)/Intelkon.Erp.Blazor.ServerSide/wwwroot/* $(pwd)/pub/wwwroot
+    - docker stop erp_ss
+    - rm -rf /opt/erp/pub
+    - cp -r $(pwd)/pub /opt/erp 
+    - /bin/cp $path_to_appsettings /opt/erp/pub
+    - docker start erp_ss        
+  when: manual
+
+
+deploy_s27_from_any:
+  stage: any
+  tags:
+    - linux
+    - s27
+  script:
+    - bash ./deploy/checkout.sh
+    - GitVersion=$(python ./deploy/gitversion.py "SemVer" "$GITVERSION_IMAGE")
+    - echo $GitVersion
+    - path_to_appsettings="deploy/config/27/appsettings.json"
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build" -e MSBUILDSINGLELOADCONTEXT='1' $BUILD_IMAGE dotnet publish Intelkon.Erp.Blazor.ServerSide --configuration Release -o pub -f net5.0
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm root
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm install
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm run build
+    - cp -R $(pwd)/Intelkon.Erp.Blazor.ServerSide/wwwroot/* $(pwd)/pub/wwwroot
+    - docker stop erp_s2
+    - rm -rf /opt/erp/pub
+    - cp -r $(pwd)/pub /opt/erp 
+    - /bin/cp $path_to_appsettings /opt/erp/pub
+    - docker start erp_s2    
+  when: manual
+  
+deploy_s28_from_any:
+  stage: any
+  tags:
+    - linux
+    - dev
+  script:
+    - bash ./deploy/checkout.sh
+    - GitVersion=$(python ./deploy/gitversion.py "SemVer" "$GITVERSION_IMAGE")
+    - echo $GitVersion
+    - path_to_appsettings="deploy/config/28/appsettings.json"
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build" -e MSBUILDSINGLELOADCONTEXT='1' $BUILD_IMAGE dotnet publish Intelkon.Erp.Blazor.ServerSide --configuration Release -o pub -f net5.0
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm root
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm install
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm run build
+    - cp -R $(pwd)/Intelkon.Erp.Blazor.ServerSide/wwwroot/* $(pwd)/pub/wwwroot
+    - docker stop erp_ss
+    - rm -rf /opt/erp/pub
+    - cp -r $(pwd)/pub /opt/erp 
+    - /bin/cp $path_to_appsettings /opt/erp/pub
+    - docker start erp_ss        
+  when: manual
