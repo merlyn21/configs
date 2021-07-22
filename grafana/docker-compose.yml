@@ -1,0 +1,17 @@
+version: '3.3'
+
+services:
+
+  grafana:
+    image: grafana/grafana:7.0.0
+    volumes:
+      - /home/grafana/data:/var/lib/grafana
+      - /home/grafana/etc:/etc/grafana
+      - /home/grafana/log:/var/log/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=password
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_INSTALL_PLUGINS=alexanderzobnin-zabbix-app
+    ports:
+      - 3000:3000
+
