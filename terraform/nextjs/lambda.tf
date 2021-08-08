@@ -1,9 +1,9 @@
 # Setup next.js lambda function
 resource "aws_lambda_function" "tf-lambda-ssr" {
-  function_name = "tf-lambda-ssr"
-  s3_bucket     = aws_s3_bucket.upload-lambda.bucket
-  s3_key        = aws_s3_bucket_object.upload_lambda.key
-  #  memory_size      = var.LAMBDA_DEFAULT_MEMORY
+  function_name    = "tf-lambda-ssr"
+  s3_bucket        = aws_s3_bucket.upload-lambda.bucket
+  s3_key           = aws_s3_bucket_object.upload_lambda.key
+  memory_size      = 512
   runtime          = "nodejs12.x"
   role             = aws_iam_role.iam_for_tf-lambda-ssr.arn
   source_code_hash = data.archive_file.default_lambda.output_base64sha256
@@ -25,4 +25,9 @@ resource "aws_iam_policy" "tf-lambda-ssr_logging" {
   path        = "/"
   description = "IAM policy for logging from a lambda"
   policy      = file("./role/logging-policy.json")
+}
+
+resource "aws_iam_role_policy_attachment" "tf-lambda-ssr_logs" {
+  role       = aws_iam_role.iam_for_tf-lambda-ssr.name
+  policy_arn = aws_iam_policy.tf-lambda-ssr_logging.arn
 }

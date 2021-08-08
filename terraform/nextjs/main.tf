@@ -1,15 +1,26 @@
-# Save terraform state in S3
-# https://www.terraform.io/docs/backends/types/s3.html
+
+terraform {
+  backend "s3" {
+    bucket = "qi-hvt-test-tf-state"
+    key            = "test/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "qi_hvt_test-terraform-state-locks"
+    encrypt        = true
+  }
+}
+
 
 module "s3_files" {
   source = "hashicorp/dir/template"
 
   #  base_dir = "${path.module}/../s3"
-  base_dir   = "./s3"
+  base_dir   = "./.serverless_nextjs/assets"
   file_types = local.file_types
 }
 
 locals {
+
+  cloudfront_s3_origin_id = "hvt-origin"
   file_types = {
     ".txt"   = "text/plain; charset=utf-8"
     ".html"  = "text/html; charset=utf-8"
@@ -37,6 +48,8 @@ locals {
 
 
 provider "aws" {
+  access_key = ""
+  secret_key = ""
   region     = "us-east-1"
 }
 
@@ -70,7 +83,7 @@ resource "aws_s3_bucket_object" "upload_s3_files" {
   key          = each.key
   source       = each.value.source_path
   content_type = each.value.content_type
-  etag         = filemd5("./s3/${each.key}")
+  etag         = filemd5("./.serverless_nextjs/assets/${each.key}")
 }
 
 data "archive_file" "default_lambda" {
@@ -87,4 +100,8 @@ resource "aws_s3_bucket_object" "upload_lambda" {
   key    = "default.zip"
   source = data.archive_file.default_lambda.output_path
   etag   = filemd5(data.archive_file.default_lambda.output_path)
+}
+
+resource "aws_cloudfront_origin_access_identity" "bucket-static-946_access_identity" {
+  comment = "Cloudfront access identity"
 }
