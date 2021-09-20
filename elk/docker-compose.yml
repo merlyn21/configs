@@ -1,0 +1,94 @@
+version: '2.2'
+services:
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.14.0
+    container_name: es01
+    environment:
+      - node.name=es01
+      - cluster.name=es-docker-cluster
+      - discovery.seed_hosts=es02,es03
+      - cluster.initial_master_nodes=es01,es02,es03
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - /opt/elk/elastic/data01:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+
+  es02:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.14.0
+    container_name: es02
+    environment:
+      - node.name=es02
+      - cluster.name=es-docker-cluster
+      - discovery.seed_hosts=es01,es03
+      - cluster.initial_master_nodes=es01,es02,es03
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - /opt/elk/elastic/data02:/usr/share/elasticsearch/data
+ 
+  es03:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.14.0
+    container_name: es03
+    environment:
+      - node.name=es03
+      - cluster.name=es-docker-cluster
+      - discovery.seed_hosts=es01,es02
+      - cluster.initial_master_nodes=es01,es02,es03
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - /opt/elk/elastic/data03:/usr/share/elasticsearch/data
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.14.0
+#    environment:
+#      SERVER_NAME: elk.stimul.app
+#      ELASTICSEARCH_HOSTS: '["http://es01:9200","http://es02:9200","http://es03:9200"]'
+    volumes:
+      - /opt/elk/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml
+#      - /opt/elk/kibana/kibana.log:/var/log/kibana/kibana.log
+    depends_on:
+       - es01
+
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    environment:
+      - TZ=Europe/Moscow
+    volumes:
+      - /opt/elk/nginx/keys:/etc/nginx/keys
+      - /opt/elk/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - /opt/elk/nginx/auth.basic:/etc/nginx/auth.basic
+    ports:
+      - 80:80
+      - 443:443
+
+    restart: unless-stopped
+    depends_on:
+       - kibana
+
+  logstash:
+    container_name: logstash
+    image: docker.elastic.co/logstash/logstash:7.14.1
+    environment:
+      XPACK_MONITORING_ENABLED: "false"
+    volumes:
+      - /opt/stend/logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
+      - /opt/stend/logstash/pipelines:/usr/share/logstash/config/pipelines:ro
+      - /opt/stend/api/logs:/usr/share/logstash/input
+
