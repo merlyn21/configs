@@ -1,0 +1,13 @@
+version: '3'
+services:
+
+  
+  logstash:
+    container_name: logstash
+    image: docker.elastic.co/logstash/logstash:7.14.1
+    environment:
+      XPACK_MONITORING_ENABLED: "false"
+    volumes:
+      - /opt/stend/logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
+      - /opt/stend/logstash/pipelines:/usr/share/logstash/config/pipelines:ro
+      - /opt/stend/back/logs:/usr/share/logstash/input
