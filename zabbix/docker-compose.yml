@@ -1,0 +1,42 @@
+version: '3'
+services:
+  postgres:
+    image: postgres:latest
+#    ports:
+#      - '127.0.0.1:5432:5432'
+    volumes:
+      - /opt/zabbix/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: postgres1234
+      POSTGRES_DB: zabbix_db
+      POSTGRES_USER: zabbix_1234
+
+  zabbix:
+    image: zabbix/zabbix-server-pgsql:latest
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: zabbix_1234
+      POSTGRES_PASSWORD: postgres1234
+      POSTGRES_DB: zabbix_db
+    ports:
+      - 10051:10051
+    depends_on:
+      - postgres
+
+
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:latest
+    environment:
+      DB_SERVER_HOST: postgres      
+      POSTGRES_USER: zabbix_1234
+      POSTGRES_PASSWORD: postgres1234
+      POSTGRES_DB: zabbix_db
+      ZBX_SERVER_HOST: zabbix
+      PHP_TZ: Europe/Moscow
+    volumes:
+      - /opt/zabbix/nginx/keys:/etc/ssl/nginx:ro      
+    ports:
+#      - 80:8080
+      - 443:8443
+    depends_on:
+      - zabbix

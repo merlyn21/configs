@@ -1,0 +1,77 @@
+version: '3'
+
+services:
+  web:
+    container_name: web
+    image: php_mysql_pdo_cron:7.42-mem
+    environment:
+      - MEMCACHIER_SERVERS=memcached:11211
+    ports:
+#      - 80:80
+      - 443:443
+    volumes:
+      - /opt/stend/php/php.ini:/usr/local/etc/php/php.ini
+      - /opt/stend/apache2:/etc/apache2
+      - /opt/stend/site1:/var/www/site1
+      - /opt/stend/site2:/var/www/site2    
+      - /opt/stend/site3:/var/www/site3
+      - /opt/stend/cron/crontab:/etc/crontab
+      - /etc/localtime:/etc/localtime
+      - /opt/stend/log:/var/log/apache2
+
+  db:
+    image: mysql:5.7
+    container_name: db
+    command: --default-authentication-plugin=mysql_native_password --sql_mode="NO_ENGINE_SUBSTITUTION"
+#    restart: always
+    environment:
+#      - TZ=Europe/Moscow
+      - MYSQL_DATABASE=db
+      - MYSQL_USER=db_user
+      - MYSQL_PASSWORD=db_pass
+      - MYSQL_ROOT_PASSWORD=root_pass
+    volumes:
+      - /opt/stend/mysql:/var/lib/mysql
+      - /opt/stend/mysql-dump:/docker-entrypoint-initdb.d
+
+  amazon:
+    container_name: amazon
+    image: my_amazonlinux:2
+    ports:
+      - 8443:443
+    volumes:
+      - /opt/stend/site:/var/www/html
+      - /opt/stend/apache2-fpm/ssl:/etc/httpd/ssl
+      - /opt/stend/httpd/conf/ssl.conf:/etc/httpd/conf.d/ssl.conf
+      - /opt/stend/httpd/httpd.conf:/etc/httpd/conf/httpd.conf
+
+#   php:
+#     container_name: php
+#     image: php_fpm:7.4
+# #    expose:
+# #      - 9000
+#     volumes:
+#       - /opt/stend/php/php.ini:/usr/local/etc/php/conf.d/php.ini
+#       - /opt/stend/site1:/var/www/site1
+#       - /opt/stend/site2:/var/www/site2
+
+#  apache2:
+#    container_name: apache2
+#    image: httpd:2.4
+#    ports:
+#      - 80:80
+#      - 443:443
+#    volumes:
+#      - /opt/stend/httpd/conf:/usr/local/apache2/conf/extra
+#      - /opt/stend/apache2-fpm/ssl:/etc/httpd/ssl
+#      - /opt/stend/httpd/httpd.conf:/usr/local/apache2/conf/httpd.conf
+#      - /opt/stend/src:/var/www/html
+#      - /opt/stend/site2:/var/www/site2
+#    depends_on:
+#      - php
+
+  memcached:
+    container_name: memcached
+    image: memcached:latest
+#    ports:
+#      - "11211:11211"
