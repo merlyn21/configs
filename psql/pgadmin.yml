@@ -1,0 +1,16 @@
+version: '3'
+services:
+  pgadmin:
+      container_name: pgadmin
+      network_mode: "host"
+      image: dpage/pgadmin4
+      environment:
+        - TZ=Europe/Moscow
+        - PGADMIN_DEFAULT_EMAIL=sample@email.app
+        - PGADMIN_DEFAULT_PASSWORD=password
+        - PGADMIN_ENABLE_TLS=True
+        - PGADMIN_LISTEN_ADDRESS=0.0.0.0
+        - PGADMIN_LISTEN_PORT=5050
+      volumes:
+        - /opt/keys/fullchain1.pem:/certs/server.cert
+        - /opt/keys/privkey1.pem:/certs/server.key
