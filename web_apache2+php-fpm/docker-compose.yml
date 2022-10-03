@@ -1,0 +1,45 @@
+version: '3'
+
+services:
+  db:
+    image: mysql:5.7
+    container_name: db
+    command: --default-authentication-plugin=mysql_native_password --sql_mode="NO_ENGINE_SUBSTITUTION"
+    restart: always
+    environment:
+#      - TZ=Europe/Moscow
+#      - MYSQL_DATABASE=dbname
+#      - MYSQL_USER=db_user
+#      - MYSQL_PASSWORD=pass
+      - MYSQL_ROOT_PASSWORD=rootpass
+      - MYSQL_ROOT_HOST=%
+    volumes:
+      - /opt/stend/mysql:/var/lib/mysql
+#      - /opt/stend/mysql-dump:/docker-entrypoint-initdb.d
+
+  php:
+    container_name: php
+    image: php:8.1-ext
+#    expose:
+#      - 9000
+    volumes:
+      - /opt/stend/php/php.ini:/usr/local/etc/php/conf.d/php.ini
+      - /opt/stend/src:/usr/local/apache2/htdocs
+
+  apache2:
+    container_name: apache2
+    image: httpd:2.4
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+#      - /opt/stend/apache/conf:/usr/local/apache2/conf/extra
+      - /opt/stend/apache/ssl:/usr/local/apache2/ssl
+      - /opt/stend/apache/httpd.conf:/usr/local/apache2/conf/httpd.conf
+      - /opt/stend/apache/camp-ssl.conf:/usr/local/apache2/conf/camp-ssl.conf
+      - /opt/stend/src:/usr/local/apache2/htdocs
+      - /opt/stend/apache/logs:/usr/local/apache2/logs
+    depends_on:
+      - php
+#      - mysql
+
