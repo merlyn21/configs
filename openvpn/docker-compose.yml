@@ -1,0 +1,13 @@
+version: '2'  
+services:  
+  openvpn:
+    cap_add:
+     - NET_ADMIN
+    image: kylemanna/openvpn
+    container_name: openvpn
+    ports:
+     - "443:1194/tcp"
+    restart: always
+    volumes:
+     - /opt/openvpn/config:/etc/openvpn
+     - /opt/openvpn/log/openvpn-status.log:/tmp/openvpn-status.log

@@ -1,0 +1,3 @@
+Download  openvpn client from  https://openvpn.net/client-connect-vpn-for-windows/
+or https://openvpn.net/client-connect-vpn-for-mac-os/.
+Install and drag the resulting file to the openvpn client window
