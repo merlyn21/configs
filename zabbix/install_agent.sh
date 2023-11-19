@@ -1,16 +1,17 @@
 wget https://repo.zabbix.com/zabbix/6.5/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.5-1%2Bubuntu22.04_all.deb
 dpkg -i zabbix-release_6.5-1+ubuntu22.04_all.deb
+#wget https://repo.zabbix.com/zabbix/6.4/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.4-1%2Bubuntu20.04_all.deb
+#dpkg -i zabbix-release_6.4-1+ubuntu20.04_all.deb
 apt update
 apt install zabbix-agent2 acl
 
 
-openssl rand -hex 32 > zabbix_agent2.psk
+openssl rand -hex 32 > /etc/zabbix/zabbix_agent2.psk
 
 #TLSConnect=psk
 #TLSAccept=psk
 #TLSPSKFile=/etc/zabbix/zabbix_agent2.psk
 #TLSPSKIdentity=PSK 001
-
 
 usermod -aG docker zabbix
 setfacl --modify user:zabbix:rw /var/run/docker.sock
