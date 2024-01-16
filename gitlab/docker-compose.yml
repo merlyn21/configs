@@ -1,0 +1,30 @@
+version: '3.6'
+services:
+  web:
+    image: 'gitlab/gitlab-ee:16.3.7-ee.0'
+    container_name: gitlab
+    restart: always
+    hostname: ''
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'https://'
+#        nginx['listen_port'] = 8080
+#        nginx['listen_https'] = false
+        # Add any other gitlab.rb configuration here, each on its own line
+    ports:
+      - '127.0.0.1:8080:80'
+#      - '443:443'
+      - '22:22'
+    volumes:
+      - /opt/gitlab/config:/etc/gitlab
+      - /opt/gitlab/logs:/var/log/gitlab
+      - /opt/gitlab/data:/var/opt/gitlab
+      - /opt/gitlab/backups:/var/opt/gitlab/backups
+    shm_size: '256m'
+
+#  redis:
+#    container_name: redis
+#    image: bitnami/redis:latest
+#    environment:
+#      - ALLOW_EMPTY_PASSWORD=yes
+#    restart: always

@@ -1,0 +1,23 @@
+version: '3'
+
+services:
+  pma:
+    container_name: pma
+    restart: always
+    image: phpmyadmin:5.2-apache
+    volumes:
+      - /opt/phpmyadmin/config/config.inc.php:/etc/phpmyadmin/config.inc.php
+    ports:
+      - '127.0.0.1:8070:80'
+
+  haproxy:
+    container_name: lb
+    image: 'ghcr.io/tomdess/docker-haproxy-certbot:master'
+    network_mode: host
+    environment:
+      - CERT1=dns
+      - EMAIL=
+      - STAGING=false
+    volumes:
+      - /opt/letsencrypt:/etc/letsencrypt
+      - /opt/haproxy.cfg:/etc/haproxy/haproxy.cfg

@@ -1,0 +1,34 @@
+server:
+  disable: true
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+- job_name: app
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: nemenu-demo-pay
+      environment: "demo"
+      __path__: /var/log/pay*.json
+- job_name: dmb
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: nemenu-demo-dbm
+      environment: "demo"
+      __path__: /var/apache/dbm*.log
+- job_name: nginx
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: nemenu-demo-nginx
+      environment: "demo"
+      __path__: /var/nginx/*log

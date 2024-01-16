@@ -1,0 +1,15 @@
+version: "3"
+
+services:
+  minio:
+    image: minio/minio
+    environment:
+      MINIO_ACCESS_KEY: 
+      MINIO_SECRET_KEY: 
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:38597:38597"
+    command: server /data
+    volumes:
+      - ./data:/data
+      - ./config:/root/.minio
