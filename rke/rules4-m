@@ -1,0 +1,44 @@
+#!/bin/bash
+
+#kubectl -n ingress-nginx get svc
+pp=`kubectl -n ingress-nginx get svc | grep Node | awk '{print $5}'`
+p1=`echo $pp | awk -F'[:,/]' '{print $2}'`
+echo $p1
+p2=`echo $pp | awk -F'[:,/]' '{print $5}'`
+echo $p2
+
+PORT1=$p1
+PORT2=$p2
+
+REAL_IP="xxx.xxx.xxx.xxx"
+
+WORKER01="192.168.1.31"
+WORKER02="192.168.1.32"
+WORKER03="192.168.1.33"
+NET="192.168.1.0/24"
+
+REAL_IFACE="eth0"
+
+#iptables -F INPUT
+#iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+#iptables -A INPUT -i $REAL_IFACE -j DROP
+
+iptables -t nat -F
+
+iptables -t nat -A PREROUTING -d $REAL_IP -p tcp -m tcp --dport 80 -m statistic --mode random --probability 0.33 -j DNAT --to-destination $WORKER02:$PORT1
+iptables -t nat -A PREROUTING -d $REAL_IP -p tcp -m tcp --dport 80 -m statistic --mode random --probability 0.50 -j DNAT --to-destination $WORKER03:$PORT1
+iptables -t nat -A PREROUTING -d $REAL_IP -p tcp -m tcp --dport 80 -j DNAT --to-destination $WORKER01:$PORT1
+
+iptables -t nat -A POSTROUTING -s $NET -d $WORKER01 -p tcp -m tcp --dport $PORT1 -j MASQUERADE
+iptables -t nat -A POSTROUTING -s $NET -d $WORKER02 -p tcp -m tcp --dport $PORT1 -j MASQUERADE
+iptables -t nat -A POSTROUTING -s $NET -d $WORKER03 -p tcp -m tcp --dport $PORT1 -j MASQUERADE
+
+iptables -t nat -A PREROUTING -d $REAL_IP -p tcp -m tcp --dport 443 -m statistic --mode random --probability 0.33 -j DNAT --to-destination $WORKER02:$PORT2
+iptables -t nat -A PREROUTING -d $REAL_IP -p tcp -m tcp --dport 443 -m statistic --mode random --probability 0.50 -j DNAT --to-destination $WORKER03:$PORT2
+iptables -t nat -A PREROUTING -d $REAL_IP -p tcp -m tcp --dport 443 -j DNAT --to-destination $WORKER01:$PORT2
+
+iptables -t nat -A POSTROUTING -s $NET -d $WORKER01 -p tcp -m tcp --dport $PORT2 -j MASQUERADE
+iptables -t nat -A POSTROUTING -s $NET -d $WORKER02 -p tcp -m tcp --dport $PORT2 -j MASQUERADE
+iptables -t nat -A POSTROUTING -s $NET -d $WORKER03 -p tcp -m tcp --dport $PORT2 -j MASQUERADE
+
+iptables -t nat -A POSTROUTING -s $NET -j MASQUERADE

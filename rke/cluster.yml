@@ -1,0 +1,45 @@
+nodes:
+    - address: 192.168.1.41
+      user: user
+      role: [controlplane, etcd]
+    - address: 192.168.1.42
+      user: user
+      role: [controlplane, etcd]
+    - address: 192.168.1.43
+      user: user
+      role: [controlplane, etcd]
+    - address: 192.168.1.31
+      user: user
+      role: [worker]
+      labels:
+        app: ingress
+    - address: 192.168.1.32
+      user: user
+      role: [worker]
+      labels:
+        app: ingress
+    - address: 192.168.1.33
+      user: user
+      role: [worker]
+      labels:
+        app: ingress
+
+ignore_docker_version: true
+
+network:
+  plugin: calico
+
+monitoring:
+  provider: metrics-server
+
+#ssh_agent_auth: true
+ssh_key_path: ~/.ssh/sshkey
+
+cluster_name: test
+
+ingress:
+  provider: nginx
+  options:
+    use-forwarded-headers: "true"
+  node_selector:
+    app: ingress

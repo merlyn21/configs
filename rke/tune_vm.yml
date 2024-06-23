@@ -1,0 +1,53 @@
+- hosts: all
+  gather_facts: yes
+  tasks:
+    - name: make sudo user
+      shell: echo 'user ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-user
+
+    - name: Добавить публичный SSH ключ для пользователя
+      authorized_key:
+        user: user
+        state: present
+        key: "{{ lookup('file', './sshkey.pub') }}"
+
+    - name: edit hostname
+      shell: echo {{ inventory_hostname }} > /etc/hostname
+
+    - name: Change hostname
+      lineinfile:
+        path: /etc/hosts
+        regexp: '^192\.168\.1\.*'
+        line: '{{ ansible_host }} {{ inventory_hostname }}'
+        backrefs: yes
+
+    - name: Update packages
+      shell: apt update
+
+    - name: install curl
+      shell: apt install curl -y
+
+    - name: get get-docker.sh
+      shell: 'curl -fsSL https://get.docker.com -o /root/get-docker.sh'
+
+    - name: install docker
+      shell: sh /root/get-docker.sh
+
+    - name: add user to group docker
+      shell: /usr/sbin/usermod -G sudo,docker user
+
+    - name: test docker
+      ansible.builtin.command: docker ps
+      register: result
+
+    - name: Перезагрузка сервера
+      ansible.builtin.reboot:
+        msg: "Перезагружаем сервер для применения важных обновлений"
+        connect_timeout: 5 
+        reboot_timeout: 100  # Максимальное время ожидания перезагрузки
+        pre_reboot_delay: 0  # Задержка перед перезагрузкой
+        post_reboot_delay: 15  # Задержка после перезагрузки, прежде чем пытаться подключиться
+        test_command: uptime
+
+    - name: View test
+      ansible.builtin.debug:
+        msg: "{{ result.stdout }}"
