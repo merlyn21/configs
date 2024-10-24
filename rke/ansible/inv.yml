@@ -1,0 +1,19 @@
+all:
+  hosts:
+    master01:
+      ansible_host: 192.168.10.5
+    master02:
+      ansible_host: 192.168.10.6
+    master03:
+      ansible_host: 192.168.10.7
+    worker01:
+      ansible_host: 192.168.10.15
+    worker02:
+      ansible_host: 192.168.10.16
+    worker03:
+      ansible_host: 192.168.10.17
+  vars:
+    ansible_ssh_user: administrator
+    #ansible_ssh_pass: 123
+    ansible_become_pass: 123
+    #ansible_become_method: su
