@@ -141,11 +141,11 @@ deploy_s27_from_any:
     - GitVersion=$(python ./deploy/gitversion.py "SemVer" "$GITVERSION_IMAGE")
     - echo $GitVersion
     - path_to_appsettings="deploy/config/27/appsettings.json"
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build" -e MSBUILDSINGLELOADCONTEXT='1' $BUILD_IMAGE dotnet publish Intelkon.Erp.Blazor.ServerSide --configuration Release -o pub -f net5.0
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm root
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm install
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm run build
-    - cp -R $(pwd)/Intelkon.Erp.Blazor.ServerSide/wwwroot/* $(pwd)/pub/wwwroot
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build" -e MSBUILDSINGLELOADCONTEXT='1' $BUILD_IMAGE dotnet publish Erp.Blazor.ServerSide --configuration Release -o pub -f net5.0
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Erp.Blazor/client" node npm root
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Erp.Blazor/client" node npm install
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Erp.Blazor/client" node npm run build
+    - cp -R $(pwd)/Erp.Blazor.ServerSide/wwwroot/* $(pwd)/pub/wwwroot
     - docker stop erp_s2
     - rm -rf /opt/erp/pub
     - cp -r $(pwd)/pub /opt/erp 
@@ -163,11 +163,11 @@ deploy_s28_from_any:
     - GitVersion=$(python ./deploy/gitversion.py "SemVer" "$GITVERSION_IMAGE")
     - echo $GitVersion
     - path_to_appsettings="deploy/config/28/appsettings.json"
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build" -e MSBUILDSINGLELOADCONTEXT='1' $BUILD_IMAGE dotnet publish Intelkon.Erp.Blazor.ServerSide --configuration Release -o pub -f net5.0
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm root
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm install
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm run build
-    - cp -R $(pwd)/Intelkon.Erp.Blazor.ServerSide/wwwroot/* $(pwd)/pub/wwwroot
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build" -e MSBUILDSINGLELOADCONTEXT='1' $BUILD_IMAGE dotnet publish Erp.Blazor.ServerSide --configuration Release -o pub -f net5.0
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Erp.Blazor/client" node npm root
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Erp.Blazor/client" node npm install
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Erp.Blazor/client" node npm run build
+    - cp -R $(pwd)/Erp.Blazor.ServerSide/wwwroot/* $(pwd)/pub/wwwroot
     - docker stop erp_ss
     - rm -rf /opt/erp/pub
     - cp -r $(pwd)/pub /opt/erp 
@@ -186,11 +186,11 @@ deploy_s27_from_any:
     - GitVersion=$(python ./deploy/gitversion.py "SemVer" "$GITVERSION_IMAGE")
     - echo $GitVersion
     - path_to_appsettings="deploy/config/27/appsettings.json"
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build" -e MSBUILDSINGLELOADCONTEXT='1' $BUILD_IMAGE dotnet publish Intelkon.Erp.Blazor.ServerSide --configuration Release -o pub -f net5.0
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm root
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm install
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm run build
-    - cp -R $(pwd)/Intelkon.Erp.Blazor.ServerSide/wwwroot/* $(pwd)/pub/wwwroot
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build" -e MSBUILDSINGLELOADCONTEXT='1' $BUILD_IMAGE dotnet publish Erp.Blazor.ServerSide --configuration Release -o pub -f net5.0
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Erp.Blazor/client" node npm root
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Erp.Blazor/client" node npm install
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Erp.Blazor/client" node npm run build
+    - cp -R $(pwd)/Erp.Blazor.ServerSide/wwwroot/* $(pwd)/pub/wwwroot
     - docker stop erp_s2
     - rm -rf /opt/erp/pub
     - cp -r $(pwd)/pub /opt/erp 
@@ -208,11 +208,11 @@ deploy_s28_from_any:
     - GitVersion=$(python ./deploy/gitversion.py "SemVer" "$GITVERSION_IMAGE")
     - echo $GitVersion
     - path_to_appsettings="deploy/config/28/appsettings.json"
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build" -e MSBUILDSINGLELOADCONTEXT='1' $BUILD_IMAGE dotnet publish Intelkon.Erp.Blazor.ServerSide --configuration Release -o pub -f net5.0
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm root
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm install
-    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Intelkon.Erp.Blazor/client" node npm run build
-    - cp -R $(pwd)/Intelkon.Erp.Blazor.ServerSide/wwwroot/* $(pwd)/pub/wwwroot
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build" -e MSBUILDSINGLELOADCONTEXT='1' $BUILD_IMAGE dotnet publish Erp.Blazor.ServerSide --configuration Release -o pub -f net5.0
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Erp.Blazor/client" node npm root
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Erp.Blazor/client" node npm install
+    - docker run --rm -v "$(pwd):/root/build" -w "/root/build/Blazor/client" node npm run build
+    - cp -R $(pwd)/Erp.Blazor.ServerSide/wwwroot/* $(pwd)/pub/wwwroot
     - docker stop erp_ss
     - rm -rf /opt/erp/pub
     - cp -r $(pwd)/pub /opt/erp 
