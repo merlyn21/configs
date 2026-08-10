@@ -2,8 +2,8 @@ namespace: app
 env_label: stage
 
 image:
-  repository: cr.yandex/crpm0vvs5g97ip7a7ged/app
-  tag: v1.2.3
+  repository: dpage/pgadmin4
+  tag: latest
   pullPolicy: Always
 
 resources:
@@ -14,8 +14,24 @@ resources:
     memory: 400Mi
     cpu: 300m
 
+containerPort: 5050
+service:
+  port: 80
+
+env:
+  - name: TZ
+    value: "Europe/Moscow"
+  - name: PGADMIN_DEFAULT_EMAIL
+    value: "pg@example.com"
+  - name: PGADMIN_DEFAULT_PASSWORD
+    value: "changeme"
+  - name: PGADMIN_LISTEN_ADDRESS
+    value: "0.0.0.0"
+  - name: PGADMIN_LISTEN_PORT
+    value: "5050"
+
 hpa:
   minReplicas: 1
-  maxReplicas: 3
+  maxReplicas: 1
   cpuUtilization: 90
   memoryUtilization: 90
