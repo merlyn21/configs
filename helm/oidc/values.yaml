@@ -1,0 +1,33 @@
+---
+image:
+  repository:
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/group.name: af-shared-alb
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+  host: login-dev.acmeparts.example
+
+environments:
+  - name: dev
+    replicaCount: 1
+    service:
+      port: 3000
+    path: /4b4cd50d-4e8d-451a-af09-8c56079d73d6
+    env:
+      NODE_ENV: production
+      PORT: "3000"
+      ISSUER: "https://login-dev.acmeparts.example/4b4cd50d-4e8d-451a-af09-8c56079d73d6"
+      DEV_CLIENT_SHARED_SECRET: ""
+      GRAPHQL_ENDPOINT: "https://api-acmeparts.acme-corp.example/graphql"
+      DB_PATH: "/app/data/oidc.db"
+    persistence:
+      enabled: true
+      size: 1Gi
+      storageClass: "ebs-retain"
+      accessMode: ReadWriteOnce
+      mountPath: /app/data

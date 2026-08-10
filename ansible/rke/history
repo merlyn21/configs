@@ -1,0 +1,8 @@
+ansible -bi inv.yml -m reboot all
+
+ansible -bi inv.yml -m shell -a "docker ps" all
+ansible -bi inv.yml -m ping all
+
+ansible -bi inv.yml -m shell -a "/sbin/usermod -G docker administrator; /sbin/usermod -g sudo administrator" all
+
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"

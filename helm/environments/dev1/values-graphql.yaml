@@ -1,0 +1,49 @@
+services:
+  graphql:
+    enabled: true
+  app:
+    enabled: true
+    env:
+      AWS_APP_CONFIG_APPLICATION: graphql-default
+  service:
+    enabled: true
+
+app_resources:
+  resources:
+    limits:
+      cpu: "200m"
+      memory: "100Mi"
+    requests:
+      cpu: "100m"
+      memory: "10Mi"
+
+images:
+  name_app: acmeparts-graphql
+
+tag:
+
+port_app: 10003
+port_service: 80
+cert: "arn:aws:acm:us-east-2:111111111111:certificate/f24cf76c-03c6-4f1e-811e-2e964466d6f5"
+host: "alb-api-acmeparts.acme-corp.example"
+cert_oidc: "arn:aws:acm:us-east-2:111111111111:certificate/70ec5041-178c-407d-915b-5f1999310d18"
+cert_internal: "arn:aws:acm:us-east-2:111111111111:certificate/8d9bed2b-a60c-4a27-99ed-5f4da451b863"
+
+env:
+  NODE_ENV: production
+  LOG_LEVEL: debug
+  MARKETPLACE_ADDRESS: "acmeparts-marketplace-service:10000"
+  CATALOG_ADDRESS: "acmeparts-catalog-service:10000"
+  OEM_ADDRESS: "acmeparts-oem-service:10000"
+  SEARCH_ADDRESS: "acmeparts-search-service:10000"
+  USERS_ADDRESS: "acmeparts-users-service:10000"
+  PRODUCT_TYPE_ID_APPLIANCE: 6ed53f7f-adb1-4cd0-bc80-b3ddc047c89f
+  PRODUCT_TYPE_ID_REPAIR_PART: 541b4226-493f-4970-88b6-144fca6491fc
+  JWT_ISSUER: Acmeparts-Users
+  JWT_AUDIENCE: Acmeparts-Graphql
+  API_KEY_SECRETS_PATH: Acmeparts-GraphQL/dev1/x-api-keys/
+  APP_ENV: dev1
+  AWS_REGION: us-east-2
+  AWS_APP_CONFIG_ENVIRONMENT: dev1
+  AWS_APP_CONFIG_PROFILE: configuration
+  AWS_APP_CONFIG_POLL_INTERVAL_IN_SECONDS: 15

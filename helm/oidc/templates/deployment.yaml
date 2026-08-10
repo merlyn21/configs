@@ -1,0 +1,67 @@
+{{- range .Values.environments }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .name }}-deployment
+  labels:
+    app: {{ .name }}
+    env: {{ .name }}
+spec:
+  replicas: {{ .replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ .name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .name }}
+
+    spec:
+      serviceAccount: acmeparts-access-service-account
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+      - name: {{ .name }}
+        image: "{{ $.Values.image.repository }}:{{ .tag }}"
+        ports:
+        - containerPort: {{ .service.port }}
+        env:
+        {{- range $key, $value := .env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        {{- range $key, $value := .secrets }}
+        - name: {{ $key }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ $.name }}-secret
+              key: {{ $key }}
+        {{- end }}
+        {{- if .persistence.enabled }}
+        volumeMounts:
+        - name: data
+          mountPath: {{ .persistence.mountPath }}
+        {{- end }}
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+      
+      volumes:
+      {{- if .persistence.enabled }}
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ .name }}-pvc
+      {{- end }}
+
+{{- end }}

@@ -1,0 +1,168 @@
+name: "Copy images"
+description: "Copy images"
+
+
+inputs:
+  env_name:
+    required: true
+  aws_role_from:
+    required: true
+  aws_role_to:
+    required: true
+  aws_region:
+    required: true
+  filter:
+    required: false
+    default: "all"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install yq
+      shell: bash
+      run: |
+        wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+        chmod +x /usr/local/bin/yq
+
+    - name: Find and process images in YAML files
+      shell: bash
+      id: find-images
+      env:
+        AWS_REGION: ${{ inputs.aws_region }}
+        YAML_DIR: "environments/${{ inputs.env_name }}"
+        FILTER: ${{ inputs.filter }}
+      run: |
+        echo "[]" > /tmp/images.json
+
+        case "$FILTER" in
+          "all")
+            file_pattern="*.y*ml"
+            echo "Processing all YAML files"
+            ;;
+          "oidc")
+            file_pattern="*oidc*.y*ml"
+            echo "Processing OIDC YAML files"
+            ;;
+          "exporters")
+            file_pattern="*exporter*.y*ml"
+            echo "Processing exporter YAML files"
+            ;;
+          "data-quality-checker")
+            file_pattern="values-data-quality-checker.y*ml"
+            echo "Processing data-quality-checker YAML files"
+            ;;            
+          *)
+            file_pattern="*${FILTER}*.y*ml"
+            echo "Processing files matching pattern: $file_pattern"
+            ;;
+        esac
+
+        found_files=$(find $YAML_DIR -type f \( -name "*.yml" -o -name "*.yaml" \) | grep -E "${file_pattern//\*/.*}" || true)
+
+        if [ -z "$found_files" ]; then
+          echo "No files found matching filter: $FILTER"
+        fi
+
+        for yaml_file in $found_files; do
+          echo "Processing file: $yaml_file"
+          
+          has_images=$(yq e 'has("images")' "$yaml_file")
+          has_tag=$(yq e 'has("tag")' "$yaml_file")
+          
+          if [ "$has_images" = "true" ] && [ "$has_tag" = "true" ]; then
+            tag=$(yq e '.tag' "$yaml_file")
+            echo "Found tag: $tag"
+            
+            for key in $(yq e '.images | keys | .[] | select(. != "tag")' "$yaml_file"); do
+              image_name=$(yq e ".images.$key" "$yaml_file")
+              
+              if [ -n "$image_name" ] && [ "$image_name" != "null" ]; then
+                image_tag="$image_name:$tag"
+                echo "Found image:tag: $image_tag"
+                
+                current_json=$(cat /tmp/images.json)
+                echo "$current_json" | jq --arg img "$image_tag" '. += [$img]' > /tmp/images.json
+              fi
+            done
+          fi
+        done
+        
+        images_json=$(cat /tmp/images.json)
+        echo "images=$(echo $images_json | jq -c .)" >> $GITHUB_OUTPUT
+        
+        count=$(echo $images_json | jq 'length')
+        echo "count=$count" >> $GITHUB_OUTPUT
+        
+        echo "Found $count images"
+
+    - name: Display found images
+      shell: bash
+      run: |
+        echo "Found ${{ steps.find-images.outputs.count }} images:"
+        echo '${{ steps.find-images.outputs.images }}' | jq .
+
+    - name: Configure AWS credentials FROM
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        audience: sts.amazonaws.com
+        role-to-assume: ${{ inputs.aws_role_from }}
+        aws-region: ${{ inputs.aws_region }}
+
+    - name: Login to ECR FROM
+      if: steps.find-images.outputs.count != '0'
+      id: login-source-ecr
+      uses: aws-actions/amazon-ecr-login@v1 
+
+    - name: Pull images from source ECR
+      if: steps.find-images.outputs.count != '0'
+      shell: bash
+      run: |
+        echo '${{ steps.find-images.outputs.images }}' | jq -r '.[]' | while read -r image_tag; do
+          image_name=${image_tag%:*}
+          tag=${image_tag#*:}
+          
+          SOURCE_URI="${{ steps.login-source-ecr.outputs.registry }}/$image_name:$tag"
+          
+          echo "Pulling image: $SOURCE_URI"
+          docker pull $SOURCE_URI || echo "Failed to pull $SOURCE_URI, continuing..."
+        done
+
+        docker images
+
+    - name: Configure AWS credentials TO
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        audience: sts.amazonaws.com
+        role-to-assume: ${{ inputs.aws_role_to }}
+        aws-region: ${{ inputs.aws_region }}
+
+    - name: Login to ECR TO
+      if: steps.find-images.outputs.count != '0'
+      id: login-target-ecr
+      uses: aws-actions/amazon-ecr-login@v1 
+
+    - name: Push images to target ECR
+      if: steps.find-images.outputs.count != '0'
+      shell: bash
+      run: |
+        echo '${{ steps.find-images.outputs.images }}' | jq -r '.[]' | while read -r image_tag; do
+          image_name=${image_tag%:*}
+          tag=${image_tag#*:}
+          
+          SOURCE_URI="${{ steps.login-source-ecr.outputs.registry }}/$image_name:$tag"
+          TARGET_URI="${{ steps.login-target-ecr.outputs.registry }}/$image_name:$tag"
+          
+          if docker image inspect $SOURCE_URI &>/dev/null; then
+            
+            echo "Tagging image: $SOURCE_URI -> $TARGET_URI"
+            docker tag $SOURCE_URI $TARGET_URI
+            
+            echo "Pushing image to target ECR: $TARGET_URI"
+            docker push $TARGET_URI
+          else
+            echo "Skipping $image_name:$tag as it was not successfully pulled"
+          fi
+        done

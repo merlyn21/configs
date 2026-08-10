@@ -1,0 +1,28 @@
+{{- if .Values.service.enabled  }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ default (include "pgbouncer.fullname" .) .Values.service.name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "pgbouncer.labels" . | nindent 4 }}
+  annotations:
+    {{- range $key, $value := .Values.service.annotations }}
+      {{ $key }}: {{ $value | quote }}
+    {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "pgbouncer.selectorLabels" . | nindent 6 }}
+  ports:
+    - port: {{ .Values.servicePort }}
+      targetPort: {{ .Values.internalPort }}
+      protocol: TCP
+      name: pgbouncer
+    {{- if .Values.pgbouncerExporter.enabled }}
+    - port: {{ .Values.pgbouncerExporter.port }}
+      targetPort: http-metrics-pg
+      protocol: TCP
+      name: http-metrics-pg
+    {{- end }}
+{{- end }}

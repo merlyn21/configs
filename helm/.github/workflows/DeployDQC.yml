@@ -1,0 +1,165 @@
+name: 05 Deploy DQC
+run-name: Deploy data quality checker to ${{ inputs.environment }}
+
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: environment
+        description: Select the environment
+        required: true
+        default: stage
+      copyi:
+        description: 'copy images'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ENVM: "${{ github.event.inputs.environment }}"
+  VALUES_NAME: "data-quality-checker-ecs"
+
+jobs:
+  copy-images:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Copy images
+      id: copyimg
+      if: github.event.inputs.copyi == 'true'
+      uses: ./.github/actions/cpimagesignitems
+      with:
+        env_name: ${{ github.event.inputs.environment }}
+        aws_region: ${{ vars.AWS_REGION }}
+        aws_role_from: ${{ secrets.AWS_CI_ROLE_FROM }}
+        aws_role_to: ${{ secrets.AWS_CI_ROLE }}
+        category: dqc
+        items: data-quality-checker-ecs
+
+  deploy-services:
+    needs: [copy-images]
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login and prepare
+        id: login
+        uses: ./.github/actions/common-login
+        with:
+          env_name: ${{ github.event.inputs.environment }}
+          aws_region: ${{ vars.AWS_REGION }}
+          aws_role: ${{ secrets.AWS_CI_ROLE }}
+
+
+      - name: Deploy data-quality-checker api
+        run: |
+          tag=$(yq eval ".dqc.\"$VALUES_NAME\"" ./environments/${{ github.event.inputs.environment }}/values-tags.yaml)
+
+          helm upgrade data-quality-checker-api ./services \
+            --install \
+            --create-namespace \
+            --namespace "backend" \
+            --values ./environments/${{ github.event.inputs.environment }}/values.yaml \
+            --values ./environments/${{ github.event.inputs.environment }}/values-data-quality-checker-ecs.yaml \
+            --set images.catalog="${{ steps.login.outputs.registry }}" \
+            --set env.APP_MODE=api \
+            --set env.ECS_CLUSTER=${{ vars.ECS_CLUSTER }} \
+            --set env.ECS_SECURITY_GROUPS=${{ vars.ECS_SECURITY_GROUPS }} \
+            --set env.ECS_SUBNETS=${{ vars.ECS_SUBNETS }} \
+            --set tag=$tag \
+            --debug
+
+      - name: Deploy data-quality-checker front
+        run: |
+          tag=$(yq eval ".dqc.\"$VALUES_NAME\"" ./environments/${{ github.event.inputs.environment }}/values-tags.yaml)
+
+          helm upgrade data-quality-checker-front ./services \
+            --install \
+            --create-namespace \
+            --namespace "backend" \
+            --values ./environments/${{ github.event.inputs.environment }}/values.yaml \
+            --values ./environments/${{ github.event.inputs.environment }}/values-data-quality-checker-ecs.yaml \
+            --set images.catalog="${{ steps.login.outputs.registry }}" \
+            --set env.APP_MODE=dashboard \
+            --set services.data_quality_checker.enabled=true \
+            --set port_app=8501 \
+            --set port_service=80 \
+            --set tag=$tag \
+            --debug
+
+  deploy-ecs:
+    needs: [deploy-services]
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps: 
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install yq
+        run: |
+          wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
+          
+      - name: prepare ENVs, TAG
+        run: |
+          # VALUES_NAME="data-quality-checker-ecs"
+          # ENVM="${{ github.event.inputs.environment }}"
+          
+          ENV_JSON=$(yq -o json '.' ./environments/$ENVM/values-$VALUES_NAME.yaml | jq -c '.env | to_entries | map({"name": .key, "value": .value})')
+          TAG=$(yq eval ".dqc.\"$VALUES_NAME\"" ./environments/${{ github.event.inputs.environment }}/values-tags.yaml)
+          IMAGE=$(yq '.images.name_app' ./environments/$ENVM/values-$VALUES_NAME.yaml)  
+
+          echo "env_json=$ENV_JSON" >> $GITHUB_ENV
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
+      - name: check GITHUB_ENV
+        run: |
+          echo ${{ github.event.inputs.run }}
+          echo ${{ github.event.inputs.run == 'true' }}
+          echo ${{ env.TAG }}
+          echo ${{ env.IMAGE }}
+          cat $GITHUB_ENV
+
+      - name: Run ECS Task
+        uses: acme-corp/Acmeparts-Helm-Charts/.github/actions/fargate@develop
+        with:
+          image_tag: ${{ env.TAG }}
+          environment: ${{ github.event.inputs.environment }}
+          name_app: "data-quality-checker-ecs"
+          image: ${{ env.IMAGE }}
+          env_vars: ${{ env.env_json }}
+          command_args: ${{ env.ARGS }}
+          run: false
+          # Secrets
+          gh_token: ${{ secrets.PAT_HELM }}
+          aws_ci_role: ${{ secrets.AWS_CI_ROLE }}
+          postgres_uri_user: ${{ secrets.POSTGRES_URI_USER }}
+          postgres_uri_catalog: ${{ secrets.POSTGRES_URI_CATALOG }}
+          postgres_uri_marketplace: ${{ secrets.POSTGRES_URI_MARKETPLACE }}
+          mssql_db_password: ${{ secrets.MSSQL_DB_PASSWORD }}
+          s3_source_access_key: ${{ secrets.S3_COMPANY2_ACCESS_KEY }}
+          s3_source_secret_key: ${{ secrets.S3_COMPANY2_SECRET_KEY }}
+          # Vars
+          aws_region: ${{ vars.AWS_REGION }}
+          ecs_cluster: ${{ vars.ECS_CLUSTER }}
+          ecs_execution_role_arn: ${{ vars.ECS_EXECUTION_ROLE_ARN }}
+          ecs_task_role_arn: ${{ vars.ECS_TASK_ROLE_ARN }}
+          ecs_subnets: ${{ vars.ECS_SUBNETS }}
+          ecs_security_groups: ${{ vars.ECS_SECURITY_GROUPS }}

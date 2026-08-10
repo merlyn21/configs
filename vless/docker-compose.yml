@@ -1,0 +1,17 @@
+services:
+  3x-ui:
+    image: ghcr.io/mhsanaei/3x-ui:latest
+    container_name: 3x-ui
+    hostname: domain_name
+    volumes:
+      - ./db/:/etc/x-ui/
+      - ./cert/:/root/cert/
+    ports:
+      - 443:443
+      - 127.0.0.1:1053:2053
+      - 36531:36531
+    environment:
+      XRAY_VMESS_AEAD_FORCED: "false"
+    tty: true
+#    network_mode: host
+    restart: unless-stopped

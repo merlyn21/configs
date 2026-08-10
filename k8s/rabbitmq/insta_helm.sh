@@ -5,4 +5,4 @@ helm repo add bitnami https://charts.bitnami.com/bitnami
 #helm pull bitnami/rabbitmq
 
 kubectl create namespace rabbit
-helm install -f values.yaml ukids-rabbitmq bitnami/rabbitmq -n rabbit
+helm install -f values.yaml demo-rabbitmq bitnami/rabbitmq -n rabbit

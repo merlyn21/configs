@@ -1,0 +1,156 @@
+name: Auto deploy to stage
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: false
+        type: string
+        default: 'stage'
+      image_tag:
+        required: true
+        type: string
+      name_app:
+        required: true
+        type: string
+      group:
+        required: true
+        type: string
+      commit_hash:
+        required: true
+        type: string
+      deploy:
+        type: boolean
+        required: false
+        default: false     
+      deploy_oidc:
+        type: boolean
+        required: false
+        default: false  
+      ref:
+        type: string
+        required: false
+        default: 'develop' 
+      triggered_by:
+        required: false
+        type: string
+        default: 'github-actions[bot]'
+      delay:
+        type: number
+        default: 0
+        required: false
+    secrets:
+      GH_TOKEN:
+        required: true
+
+env:
+  FILE_TAGS: "./environments/${{ inputs.environment }}/values-tags.yaml"
+  SERVICE_NAME: ${{ inputs.name_app }}
+  GROUP_NAME: ${{ inputs.group }}
+  IMAGE_TAG: ${{ inputs.image_tag }}
+  SHORT_HASH: ${{ inputs.commit_hash }}
+  REF_DEPLOY: ${{ inputs.ref }}
+
+jobs:
+  update-helm-values:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Delay start
+        if: ${{ inputs.delay > 0 }}
+        run: sleep ${{ inputs.delay }}
+
+      - name: Checkout Helm charts repository
+        uses: actions/checkout@v4
+        with:
+          repository: acme-corp/Acmeparts-Helm-Charts
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Setup yq
+        uses: mikefarah/yq@master
+      
+      - name: Update values-tags.yaml
+        run: |
+          echo "Updating ${SERVICE_NAME} to ${IMAGE_TAG} in ${FILE_TAGS}"
+          
+          # check file
+          if [ ! -f "${FILE_TAGS}" ]; then
+            echo "❌ Error: File ${FILE_TAGS} does not exist!"
+            exit 1
+          fi
+          
+          # update tag
+          yq eval ".${GROUP_NAME}.${SERVICE_NAME} = \"${IMAGE_TAG}\"" -i ${FILE_TAGS}
+          
+          # check changes
+          echo "Updated value:"
+          yq eval ".${GROUP_NAME}.${SERVICE_NAME}" ${FILE_TAGS}
+
+          cat ${FILE_TAGS}
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add ${FILE_TAGS}
+          git commit -m "Automatically update ${SERVICE_NAME} service tag version: ${IMAGE_TAG} commit: ${SHORT_HASH}"
+          git push origin ${REF_DEPLOY}
+          
+          echo "✅ ${FILE_TAGS} updated and committed"
+
+      # - name: Checkout Helm charts repository
+      #   uses: actions/checkout@v4
+      #   with:
+      #     repository: acme-corp/Acmeparts-Helm-Charts
+      #     ref: develop
+      #     token: ${{ secrets.GH_TOKEN }}
+
+      - name: Debug inputs
+        run: |
+          echo "environment: '${{ inputs.environment }}'"
+          echo "file tag: '${FILE_TAGS}'"
+          echo "deploy: '${{ inputs.deploy }}'"
+          echo "group: '${{ inputs.group }}'"
+          echo "deploy type check: ${{ inputs.deploy == 'true' }}"
+          echo "group type check: ${{ inputs.group == 'services' }}"
+          echo "deploy_oidc type check: ${{ inputs.deploy_oidc == 'true' }}"
+          echo "combined: ${{ inputs.deploy == 'true' && github.inputs.group == 'services' }}"
+
+      - name: Run DeployServices workflow
+        if: inputs.deploy == true && inputs.group == 'services'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          ENVIRONMENT="${{ inputs.environment }}"
+          
+          # get param name
+          SERVICE_PARAM=$(echo "deploy_${SERVICE_NAME}" | tr '-' '_')
+          
+          echo "Triggering deployment for ${SERVICE_NAME} to ${ENVIRONMENT}"
+          echo "Using parameter: ${SERVICE_PARAM}=true"
+          
+          gh workflow run DeployServices.yml \
+            --ref ${REF_DEPLOY} \
+            -f environment=${ENVIRONMENT} \
+            -f copyi=true \
+            -f deploy_all_services=false \
+            -f triggered_by="by ${{ github.actor }}" \
+            -f ${SERVICE_PARAM}=true 
+          
+          echo "✅ Deployment triggered successfully"
+
+      - name: Run Deploy OIDC workflow
+        if: inputs.deploy_oidc == true
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          ENVIRONMENT="${{ inputs.environment }}"
+          
+          gh workflow run DeployOIDC.yml \
+            --ref ${REF_DEPLOY} \
+            -f environment=${ENVIRONMENT}
+          
+          echo "✅ Start deployment OIDC successfully"

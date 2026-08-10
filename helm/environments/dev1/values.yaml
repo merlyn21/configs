@@ -1,0 +1,86 @@
+services:
+  graphql:
+    enabled: false
+  app:
+    enabled: false
+  consumer:
+    enabled: false
+  init:
+    enabled: false
+  initcons:
+    enabled: false
+  service:
+    enabled: false
+  service_headless:
+    enabled: false
+  seed:
+    enabled: false
+  job_args:
+    enabled: false
+  cron_job:
+    enabled: false
+  exporter:
+    enabled: false
+  oidc:
+    enabled: false
+  internal:
+    enabled: false
+  data_quality_checker:
+    enabled: false
+    
+app_resources:
+  resources:
+    limits:
+      cpu: "200m"
+      memory: "100Mi"
+    requests:
+      cpu: "100m"
+      memory: "40Mi"
+
+consumer_resources:
+  resources:
+    limits:
+      cpu: "200m"
+      memory: "40Mi"
+    requests:
+      cpu: "100m"
+      memory: "20Mi"
+
+replicas_app: 1
+replicas_cons: 3
+
+autoscale_app:
+  enabled: false
+autoscale_cons:
+  enabled: false
+  
+hpa_app: 
+  replicas:
+    min: 1
+    max: 3
+  utilization: 
+    cpu: 80
+    memory: 80
+
+hpa_cons: 
+  replicas:
+    min: 1
+    max: 3
+  utilization: 
+    cpu: 80
+    memory: 80
+
+liveness:
+  enabled: false
+
+serviceAccount: acmeparts-access-service-account
+
+persistence:
+  enabled: false 
+  
+port_app: 50051
+port_service: 10000
+
+global:
+  labels:
+    env: dev1

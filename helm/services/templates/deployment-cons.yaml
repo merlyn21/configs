@@ -1,0 +1,81 @@
+{{- if .Values.services.consumer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: "{{ .Release.Name }}-consumer"
+  name: "{{ .Release.Name }}-consumer"
+spec:
+  {{- if not .Values.autoscale_cons.enabled }}
+  replicas: {{ .Values.replicas_cons }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: "{{ .Release.Name }}-consumer"
+  template:
+    metadata:
+      labels:
+        app: "{{ .Release.Name }}-consumer"
+        date: "{{ now | unixEpoch }}"
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: "{{ .Release.Name }}-consumer"
+      serviceAccountName: {{ .Values.serviceAccount }}
+      {{- if .Values.services.initcons.enabled }}
+      initContainers:
+        - name: {{ .Release.Name }}-migrations
+          image: "{{ .Values.images.catalog }}/{{ .Values.images.name_migration }}:{{ .Values.tag }}"
+          args:
+            - "-path=/migrations"
+            - "-database=$(DATABASE_URL)"
+            - "up"
+          envFrom:
+            - secretRef:
+                name: "{{ .Release.Name }}-env-secret"
+      {{- end }}
+      containers:
+        - name: {{ .Release.Name }}-consumer
+          image: "{{ .Values.images.catalog }}/{{ .Values.images.name_consumer }}:{{ .Values.tag }}"
+          imagePullPolicy: Always
+          {{- include "app.resources" (dict "resources" .Values.consumer_resources.resources) | nindent 10 }}
+          envFrom:
+            - configMapRef:
+                name: "{{ .Release.Name }}-env"
+            - secretRef:
+                name: "{{ .Release.Name }}-env-secret"
+          {{- include "app.workloadEnv" .Values.services.consumer.env | nindent 10 }}
+
+{{- if .Values.autoscale_cons.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: "{{ .Release.Name }}-consumer-hpa-cons"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: "{{ .Release.Name }}-consumer"
+  minReplicas: {{ .Values.hpa_cons.replicas.min }}
+  maxReplicas: {{ .Values.hpa_cons.replicas.max }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa_cons.utilization.cpu }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa_cons.utilization.memory }}
+
+{{- end }}
+{{- end }}

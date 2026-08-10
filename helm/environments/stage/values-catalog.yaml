@@ -1,0 +1,41 @@
+tag: "20260226.1240"
+
+services:
+  app:
+    enabled: true
+    env:
+      AWS_APP_CONFIG_APPLICATION: catalog-grpc-server-default
+  init:
+    enabled: true
+  service:
+    enabled: true
+  service_headless:
+    enabled: true
+
+app_resources:
+  resources:
+    limits:
+      cpu: "200m"
+      memory: "100Mi"
+    requests:
+      cpu: "50m"
+      memory: "40Mi"
+
+liveness:
+  enabled: true
+
+images:
+  name_app: acmeparts-catalog-grpc
+  name_migration: acmeparts-catalog-migration
+
+serviceAccount: acmeparts-access-service-account
+
+autoscale_app:
+  enabled: true
+
+env:
+  APP_ENV: stage
+  AWS_REGION: us-east-2
+  AWS_APP_CONFIG_ENVIRONMENT: stage
+  AWS_APP_CONFIG_PROFILE: configuration
+  AWS_APP_CONFIG_POLL_INTERVAL_IN_SECONDS: 15

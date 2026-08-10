@@ -1,0 +1,56 @@
+{{- if .Values.services.oidc.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-deployment
+  labels:
+    app: {{ .Release.Name }}
+    env: {{ .Release.Name }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount }}
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+      - name: {{ .Release.Name }}
+        image: "{{ .Values.images.catalog }}/{{ .Values.images.name_app }}:{{ .Values.tag }}"
+        imagePullPolicy: Always
+        {{- include "app.resources" (dict "resources" .Values.app_resources.resources) | nindent 8 }}
+        ports:
+        - containerPort: {{ .Values.port_app }}
+        envFrom:
+        - configMapRef:
+            name: "{{ .Release.Name }}-env"
+        - secretRef:
+            name: "{{ .Release.Name }}-env-secret"
+        {{- include "app.workloadEnv" .Values.services.oidc.env | nindent 8 }}
+        {{- if .Values.persistence.enabled }}
+        volumeMounts:
+        - name: data
+          mountPath: {{ .Values.persistence.mountPath }}
+        {{- end }}
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+      
+      volumes:
+      {{- if .Values.persistence.enabled }}
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ .Release.Name }}-pvc
+      {{- end }}
+
+{{- end }}

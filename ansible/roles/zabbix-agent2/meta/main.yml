@@ -1,0 +1,14 @@
+#SPDX-License-Identifier: MIT-0
+galaxy_info:
+  author: Nick Asadulin
+  description: Installs Zabbix Agent 2 and configures PSK-encrypted communication with a Zabbix server
+  license: MIT-0
+
+  min_ansible_version: 2.1
+
+  galaxy_tags:
+    - zabbix
+    - monitoring
+    - provisioning
+
+dependencies: []

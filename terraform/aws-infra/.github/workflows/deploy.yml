@@ -1,0 +1,173 @@
+name: Deploy infrastructure 
+run-name: Deploy infrastructure ${{ inputs.environment }} - ${{ inputs.apply == true && '🚀 APPLY' || '🔍 PLAN' }} mode
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: environment
+        description: Select the environment
+        required: true
+        default: dev1
+      apply:
+        description: 'Terraform Apply'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  terraform-plan:
+    environment: ${{ github.event.inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      plan-output: ${{ steps.save-plan.outputs.plan-output }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build lambda zip (with deps)
+        run: |
+          set -euo pipefail
+          rm -rf modules/ecs/lambda/build modules/ecs/delta_exporter.zip modules/ecs/normalization.zip
+          mkdir -p modules/ecs/lambda/build
+          python -m pip install --upgrade pip
+          python -m pip install -r modules/ecs/lambda/requirements.txt -t modules/ecs/lambda/build
+
+          # Delta exporter
+          cp modules/ecs/lambda/delta_exporter.py modules/ecs/lambda/build/delta_exporter.py
+          (cd modules/ecs/lambda/build && zip -qr ../../delta_exporter.zip .)
+          rm modules/ecs/lambda/build/delta_exporter.py
+
+          # Normalization
+          cp modules/ecs/lambda/normalization.py modules/ecs/lambda/build/normalization.py
+          (cd modules/ecs/lambda/build && zip -qr ../../normalization.zip .)
+          
+          ls -lah modules/ecs/*.zip
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          audience: sts.amazonaws.com
+          role-to-assume: ${{ secrets.AWS_CI_ROLE }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Initialize Terraform
+        run: terraform init -backend-config=environments/${{ inputs.environment }}/backend.tf
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Plan Terraform
+        id: save-plan
+        env:
+          TF_VAR_datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
+          TF_VAR_datadog_app_key: ${{ secrets.DATADOG_APP_KEY }}
+          TF_VAR_datadog_postgres_password: ${{ secrets.DATADOG_POSTGRES_PASSWORD }}
+        run: |
+          terraform plan -out=plan-output.json -var-file=environments/${{ inputs.environment }}/terraform.tfvars
+#-target=module.ecr_repo
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: |
+            plan-output.json
+            modules/ecs/delta_exporter.zip
+            modules/ecs/normalization.zip
+
+
+  terraform-show-plan:
+    environment: ${{ github.event.inputs.environment }}
+    needs: [terraform-plan]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          audience: sts.amazonaws.com
+          role-to-assume: ${{ secrets.AWS_CI_ROLE }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan
+
+      - name: Check lambda zip exists
+        run: ls -lah modules/ecs/delta_exporter.zip
+
+      - name: Terraform Initialize
+        run: terraform init -backend-config=environments/${{ inputs.environment }}/backend.tf
+
+      - name: Show Plan Output
+        run: |
+          ls -la
+          terraform show plan-output.json
+
+  terraform-apply:
+    if: ${{ inputs.apply == true }}
+    environment: ${{ github.event.inputs.environment }}
+    needs: [terraform-show-plan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5    
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          audience: sts.amazonaws.com
+          role-to-assume: ${{ secrets.AWS_CI_ROLE }}
+          aws-region: ${{ vars.AWS_REGION }}
+          
+      - name: Terraform Initialize
+        run: terraform init -backend-config=environments/${{ inputs.environment }}/backend.tf
+
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan
+
+      - name: Terraform Apply
+        env:
+          TF_VAR_datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
+          TF_VAR_datadog_app_key: ${{ secrets.DATADOG_APP_KEY }}
+          TF_VAR_datadog_postgres_password: ${{ secrets.DATADOG_POSTGRES_PASSWORD }}
+        run: terraform apply -auto-approve -var-file=environments/${{ inputs.environment }}/terraform.tfvars plan-output.json

@@ -1,0 +1,31 @@
+services:
+  seed:
+    enabled: true
+    env:
+      # TODO: replace with a dedicated AppConfig profile for this job once created in Acmeparts-App-Configs
+      AWS_APP_CONFIG_APPLICATION: catalog-grpc-server-default
+
+app_resources:
+  resources:
+    limits:
+      cpu: "200m"
+      memory: "500Mi"
+    requests:
+      cpu: "100m"
+      memory: "200Mi"
+
+images:
+  name_seed: acmeparts-catalog-seeds
+
+tag:
+
+env:
+  KAFKA_BROKER_URL: b-1.acmepartsdev1mskclust.acgzz0.c2.kafka.us-east-2.amazonaws.com:9092
+  KAFKA_BROKER_URLS: "b-1.acmepartsdev1mskclust.acgzz0.c2.kafka.us-east-2.amazonaws.com:9092,b-2.acmepartsdev1mskclust.acgzz0.c2.kafka.us-east-2.amazonaws.com:9092,b-3.acmepartsdev1mskclust.acgzz0.c2.kafka.us-east-2.amazonaws.com:9092"
+  KAFKA_INDEXING_EVENTS_TOPIC: indexing_events.v1
+  LOG_LEVEL: debug
+  APP_ENV: dev1
+  AWS_REGION: us-east-2
+  AWS_APP_CONFIG_ENVIRONMENT: dev1
+  AWS_APP_CONFIG_PROFILE: configuration
+  AWS_APP_CONFIG_POLL_INTERVAL_IN_SECONDS: 15

@@ -1,0 +1,291 @@
+name: 02 Exporter deploy
+run-name: Exporter deploy to ${{ inputs.environment }}
+
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: environment
+        description: Select the environment
+        required: true
+        default: stage
+
+      run:
+        description: 'Run ECS'
+        type: boolean
+        required: false
+        default: false
+      copyi:
+        description: 'copy images'
+        type: boolean
+        required: false
+        default: true
+
+      deploy_all:
+        description: 'All exporters'
+        type: boolean
+        default: false
+      exporter-delta:
+        description: 'exporter-delta'
+        type: boolean
+        default: false
+      exporter-mapping-akas:
+        description: 'exporter-mapping-akas'
+        type: boolean
+        default: false
+      exporter-mapping-b2c-prices:
+        description: 'exporter-mapping-b2c-prices'
+        type: boolean
+        default: false
+      exporter-company2:
+        description: 'exporter-company2'
+        type: boolean
+        default: false
+      exporter-company2-inventory:
+        description: 'exporter-company2-inventory'
+        type: boolean
+        default: false
+      exporter-raw:
+        description: 'exporter-raw'
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ENVM: "${{ github.event.inputs.environment }}"
+
+jobs:
+  prepare-list-and-copy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      exporters_list: ${{ steps.build-list.outputs.exporters_list }}
+      exporters_csv: ${{ steps.build-list.outputs.exporters_csv }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build services list
+        id: build-list
+        run: |
+          INPUTS_JSON='${{ toJSON(inputs) }}'
+          
+          DEPLOY_ALL=$(echo "$INPUTS_JSON" | jq -r '.deploy_all')
+          
+          if [[ "$DEPLOY_ALL" == "true" ]]; then
+            # deploy_all=true, give all exporter-* inputs
+            EXPORTERS_ARRAY=$(echo "$INPUTS_JSON" | jq -c '
+              to_entries | 
+              map(select(
+                .key != "environment" and 
+                .key != "run" and 
+                .key != "copyi" and 
+                .key != "deploy_all" and
+                (.key | startswith("exporter-"))
+              )) | 
+              map(.key) | 
+              sort
+            ')
+          else
+            # give exporter-* with value=true
+            EXPORTERS_ARRAY=$(echo "$INPUTS_JSON" | jq -c '
+              to_entries | 
+              map(select(
+                .key != "environment" and 
+                .key != "run" and 
+                .key != "copyi" and 
+                .key != "deploy_all" and
+                (.key | startswith("exporter-")) and
+                .value == true
+              )) | 
+              map(.key) | 
+              sort
+            ')
+          fi
+          
+          echo "$EXPORTERS_ARRAY"
+
+          # Check: if list is empty — fail
+          if [[ "$EXPORTERS_ARRAY" == "[]" ]]; then
+            echo "❌ Error: No exporters selected. Enable 'deploy_all' or select at least one exporter."
+            exit 1
+          fi
+          
+          # Replace exporters according to mapping rules and remove duplicates
+          NORMALIZED_ARRAY=$(echo "$EXPORTERS_ARRAY" | jq -c '
+            map(
+              if (. == "exporter-company2-inventory") then
+                "exporter-company2"
+              else
+                .
+              end
+            ) | unique | sort
+          ')
+          
+          EXPORTERS_CSV=$(echo "$NORMALIZED_ARRAY" | jq -r 'join(",")')
+          
+          echo "exporters_list=${EXPORTERS_ARRAY}" >> $GITHUB_OUTPUT
+          echo "exporters_csv=${EXPORTERS_CSV}" >> $GITHUB_OUTPUT
+          
+          echo "✅ Selected exporters: ${EXPORTERS_CSV}" 
+
+      - name: view outputs
+        run: |
+          echo "List_csv: ${{ steps.build-list.outputs.exporters_csv }}"
+          echo "List array: ${{ steps.build-list.outputs.exporters_list }}"
+
+      - name: Copy images
+        id: copyimg
+        if: github.event.inputs.copyi == 'true'
+        uses: ./.github/actions/cpimagesignitems
+        with:
+          env_name: ${{ github.event.inputs.environment }}
+          aws_region: ${{ vars.AWS_REGION }}
+          aws_role_from: ${{ secrets.AWS_CI_ROLE_FROM }}
+          aws_role_to: ${{ secrets.AWS_CI_ROLE }}
+          category: exporters
+          items: ${{ steps.build-list.outputs.exporters_csv }}
+          
+  prepare-exporter:
+    needs: [prepare-list-and-copy]
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    strategy:
+      matrix:
+        exporter: ${{ fromJson(needs.prepare-list-and-copy.outputs.exporters_list) }}
+    steps: 
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: view outputs
+        run: |
+          echo "List_array: ${{ needs.prepare-list-and-copy.outputs.exporters_list }}"
+          echo "matrix: ${{ fromJson(needs.prepare-list-and-copy.outputs.exporters_list) }}"
+          
+      - name: Install yq
+        run: |
+          wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
+          
+      - name: prepare ENVs, TAG
+        run: |
+          EXPORTER="${{ matrix.exporter }}"
+
+          echo "$EXPORTER"
+
+          case "$EXPORTER" in
+
+            exporter-company2-inventory)
+              VALUES_NAME=$EXPORTER  
+              VALUES_TAG="exporter-company2"
+              ;;                      
+            *)
+              VALUES_NAME="$EXPORTER"
+              VALUES_TAG="$EXPORTER"
+              ;;
+          esac
+
+          ENV_JSON=$(yq -o json '.' ./environments/$ENVM/values-$VALUES_NAME.yaml | jq -c '.env | to_entries | map({"name": .key, "value": .value})')
+          TAG=$(yq eval ".exporters.\"$VALUES_TAG\"" ./environments/$ENVM/values-tags.yaml)
+          IMAGE=$(yq '.images.name_app' ./environments/$ENVM/values-$VALUES_NAME.yaml)  
+          ARGS=$(yq ".args[\"$EXPORTER\"]" ./environments/$ENVM/values-$VALUES_NAME.yaml 2>/dev/null || echo "")
+
+          if [ -z "$ARGS" ] || [ "$ARGS" = "null" ]; then
+            ARGS="null"
+          fi
+
+          echo "Processing exporter: $EXPORTER"
+          echo "Values file: values-$VALUES_NAME.yaml"
+          echo $ARGS 
+          echo "env_json=$ENV_JSON" >> $GITHUB_ENV
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "ARGS=$ARGS" >> $GITHUB_ENV 
+
+          # Save to outputs directory for artifact
+          mkdir -p outputs
+          jq -n \
+            --arg exporter "$EXPORTER" \
+            --arg tag "$TAG" \
+            --arg image "$IMAGE" \
+            --argjson args "$ARGS" \
+            --argjson env_json "$ENV_JSON" \
+            '{
+              exporter: $exporter,
+              tag: $tag,
+              image: $image,
+              args: $args,
+              env_json: $env_json
+            }' > outputs/$EXPORTER.json
+
+      - name: Upload configuration
+        uses: actions/upload-artifact@v4
+        with:
+          name: config-${{ matrix.exporter }}
+          path: outputs/${{ matrix.exporter }}.json
+          retention-days: 1
+
+
+  deploy-exporter:
+    needs: [prepare-exporter, prepare-list-and-copy]
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    strategy:
+      matrix:
+        exporter: ${{ fromJson(needs.prepare-list-and-copy.outputs.exporters_list) }}
+    steps:
+      - name: Download configuration
+        uses: actions/download-artifact@v4
+        with:
+          name: config-${{ matrix.exporter }}
+          
+      - name: Read configuration
+        id: config
+        run: |
+          cat ${{ matrix.exporter }}.json
+          CONFIG=$(cat ${{ matrix.exporter }}.json)
+          echo "tag=$(jq -r '.tag' ${{ matrix.exporter }}.json)" >> $GITHUB_OUTPUT
+          echo "image=$(jq -r '.image' ${{ matrix.exporter }}.json)" >> $GITHUB_OUTPUT
+          echo "args=$(jq -c '.args' ${{ matrix.exporter }}.json)" >> $GITHUB_OUTPUT
+          echo "env_json=$(jq -c '.env_json' ${{ matrix.exporter }}.json)" >> $GITHUB_OUTPUT
+
+      - name: Check configuration
+        run: |
+          echo ${{ steps.config.outputs.tag }}
+          echo ${{ matrix.exporter }}
+          echo ${{ steps.config.outputs.image }}
+          echo ${{ steps.config.outputs.args }}
+
+      - name: Run ECS Task
+        uses: acme-corp/Acmeparts-Helm-Charts/.github/actions/fargate@develop
+        with:
+          image_tag: ${{ steps.config.outputs.tag }}
+          environment: ${{ github.event.inputs.environment }}
+          name_app: ${{ matrix.exporter }}
+          image: ${{ steps.config.outputs.image }}
+          env_vars: ${{ steps.config.outputs.env_json }}
+          command_args: ${{ steps.config.outputs.args || '' }}
+          run: ${{ github.event.inputs.run == 'true' }}
+          # Secrets
+          gh_token: ${{ secrets.PAT_HELM }}
+          aws_ci_role: ${{ secrets.AWS_CI_ROLE }}
+          postgres_uri_user: ${{ secrets.POSTGRES_URI_USER }}
+          postgres_uri_catalog: ${{ secrets.POSTGRES_URI_CATALOG }}
+          postgres_uri_marketplace: ${{ secrets.POSTGRES_URI_MARKETPLACE }}
+          mssql_db_password: ${{ secrets.MSSQL_DB_PASSWORD }}
+          s3_source_access_key: ${{ secrets.S3_COMPANY2_ACCESS_KEY }}
+          s3_source_secret_key: ${{ secrets.S3_COMPANY2_SECRET_KEY }}
+          # Vars
+          aws_region: ${{ vars.AWS_REGION }}
+          ecs_cluster: ${{ vars.ECS_CLUSTER }}
+          ecs_execution_role_arn: ${{ vars.ECS_EXECUTION_ROLE_ARN }}
+          ecs_task_role_arn: ${{ vars.ECS_TASK_ROLE_ARN }}
+          ecs_subnets: ${{ vars.ECS_SUBNETS }}
+          ecs_security_groups: ${{ vars.ECS_SECURITY_GROUPS }}

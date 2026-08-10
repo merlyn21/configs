@@ -1,0 +1,13 @@
+#SPDX-License-Identifier: MIT-0
+galaxy_info:
+  author: Nick Asadulin
+  description: Installs Docker Engine via get.docker.com and a log-rotation-capped daemon.json
+  license: MIT-0
+
+  min_ansible_version: 2.1
+
+  galaxy_tags:
+    - docker
+    - provisioning
+
+dependencies: []

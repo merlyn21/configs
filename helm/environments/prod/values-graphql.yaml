@@ -1,0 +1,51 @@
+tag: "20260129.1352"
+
+services:
+  graphql:
+    enabled: true
+  app:
+    enabled: true
+    env:
+      AWS_APP_CONFIG_APPLICATION: graphql-default
+  service:
+    enabled: true
+
+autoscale_app:
+  enabled: true
+
+hpa_app:
+  replicas:
+    min: 10
+    max: 100
+  utilization:
+    cpu: 65
+    memory: 65
+
+app_resources:
+  resources:
+    limits:
+      cpu: "200m"
+      memory: "100Mi"
+    requests:
+      cpu: "100m"
+      memory: "50Mi"
+
+liveness:
+  enabled: true
+
+images:
+  name_app: acmeparts-graphql
+
+port_app: 10003
+port_service: 80
+cert: "arn:aws:acm:us-east-2:222222222222:certificate/a4ad0f28-095c-4752-a2ad-7c150c933f75"
+cert_oidc: "arn:aws:acm:us-east-2:222222222222:certificate/da6c0be3-c90d-490a-b9d8-f3b4b271758c"
+cert_internal: "arn:aws:acm:us-east-2:222222222222:certificate/a7c5122a-752e-4f2c-a103-116d2d07471b"
+host: "alb.acmeparts-prod.acmeparts.example"
+
+env:
+  APP_ENV: prod
+  AWS_REGION: us-east-2
+  AWS_APP_CONFIG_ENVIRONMENT: prod
+  AWS_APP_CONFIG_PROFILE: configuration
+  AWS_APP_CONFIG_POLL_INTERVAL_IN_SECONDS: 15

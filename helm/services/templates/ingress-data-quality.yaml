@@ -1,0 +1,26 @@
+{{- if .Values.services.data_quality_checker.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-ingress
+  annotations:
+    alb.ingress.kubernetes.io/group.name: pf-shared-alb
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+
+spec:
+  ingressClassName: "alb"
+
+  rules:
+  - host: {{ .Values.host }}
+    http:
+      paths:
+      - path: {{ .Values.path }}
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Release.Name }}-service
+            port:
+              number: {{ .Values.port_service }}
+
+{{- end }}

@@ -1,0 +1,100 @@
+name: 00 Copy images
+run-name: Copy images to ${{ inputs.environment }}
+
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: environment
+        description: Select the environment
+        required: true
+        default: stage
+
+      services:
+        description: 'copy services'
+        type: boolean
+        required: false
+        default: false
+      exporters:
+        description: 'copy exporters'
+        type: boolean
+        required: false
+        default: false
+      jobs:
+        description: 'copy jobs'
+        type: boolean
+        required: false
+        default: false
+
+env:
+  YAML_DIR: "environments/${{ github.event.inputs.environment }}"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  copy-images:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Extract services list
+      id: services
+      if: github.event.inputs.services == 'true'
+      run: |
+        SERVICES=$(yq eval '.services | keys | join(",")' $YAML_DIR/values-tags.yaml)
+        echo "list=$SERVICES" >> $GITHUB_OUTPUT
+        echo "Services: $SERVICES"
+
+    - name: Copy all images services
+      if: github.event.inputs.services == 'true'
+      uses: ./.github/actions/cpimagesignitems
+      with:
+        env_name: ${{ github.event.inputs.environment }}
+        aws_region: ${{ vars.AWS_REGION }}
+        aws_role_from: ${{ secrets.AWS_CI_ROLE_FROM }}
+        aws_role_to: ${{ secrets.AWS_CI_ROLE }}
+        category: services
+        items: ${{ steps.services.outputs.list }}
+
+    - name: Extract exporters list
+      id: exporters
+      if: github.event.inputs.exporters == 'true'
+      run: |
+        EXPORTERS=$(yq eval '.exporters | keys | join(",")' $YAML_DIR/values-tags.yaml)
+        echo "list=$EXPORTERS" >> $GITHUB_OUTPUT
+        echo "Exporters: $EXPORTERS"
+
+    - name: Copy all images exporters
+      if: github.event.inputs.exporters == 'true'
+      uses: ./.github/actions/cpimagesignitems
+      with:
+        env_name: ${{ github.event.inputs.environment }}
+        aws_region: ${{ vars.AWS_REGION }}
+        aws_role_from: ${{ secrets.AWS_CI_ROLE_FROM }}
+        aws_role_to: ${{ secrets.AWS_CI_ROLE }}
+        category: exporters
+        items: ${{ steps.exporters.outputs.list }}
+
+    - name: Extract jobs list
+      id: jobs
+      if: github.event.inputs.jobs == 'true'
+      run: |
+        JOBS=$(yq eval '.jobs | keys | join(",")' $YAML_DIR/values-tags.yaml)
+        echo "list=$JOBS" >> $GITHUB_OUTPUT
+        echo "Jobs: $JOBS"      
+
+    - name: Copy all images jobs
+      if: github.event.inputs.jobs == 'true'
+      uses: ./.github/actions/cpimagesignitems
+      with:
+        env_name: ${{ github.event.inputs.environment }}
+        aws_region: ${{ vars.AWS_REGION }}
+        aws_role_from: ${{ secrets.AWS_CI_ROLE_FROM }}
+        aws_role_to: ${{ secrets.AWS_CI_ROLE }}
+        category: jobs
+        items: ${{ steps.jobs.outputs.list }}

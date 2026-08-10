@@ -1,0 +1,251 @@
+name: "Copy images"
+description: "Copy images"
+
+
+inputs:
+  env_name:
+    required: true
+  aws_role_from:
+    required: true
+  aws_role_to:
+    required: true
+  aws_region:
+    required: true
+  category:
+    description: 'Category in values-tags.yaml (services, exporters, dqc, oidc)'
+    required: true
+  items:
+    description: 'Comma-separated list of items to process'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install yq
+      shell: bash
+      run: |
+        wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+        chmod +x /usr/local/bin/yq
+
+    - name: Install Cosign
+      uses: sigstore/cosign-installer@v3.7.0
+      with:
+        cosign-release: 'v2.4.1'
+
+    - name: Install crane
+      shell: bash
+      run: |
+        set -euo pipefail
+        CRANE_VERSION="v0.20.3"
+        curl -fsSL "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
+          | tar -xz -C /usr/local/bin crane
+        crane version
+
+    - name: Find and process images
+      shell: bash
+      id: find-images
+      env:
+        AWS_REGION: ${{ inputs.aws_region }}
+        YAML_DIR: "environments/${{ inputs.env_name }}"
+        CATEGORY: ${{ inputs.category }}
+        ITEMS: ${{ inputs.items }}
+      run: |
+        echo "[]" > /tmp/images.json
+        
+        echo "Processing category: $CATEGORY"
+        echo "Items: $ITEMS"
+        
+        # function for item (service/exporter/dqc/oidc)
+        process_item() {
+          local item=$1
+          local yaml_file="$YAML_DIR/values-$item.yaml"
+          
+          if [ ! -f "$yaml_file" ]; then
+            echo "Warning: File not found: $yaml_file"
+            return
+          fi
+          
+          echo "Processing $item from file: $yaml_file"
+          
+          # get tag from values-tags.yaml
+          local tag=$(yq eval ".$CATEGORY.\"$item\"" "$YAML_DIR/values-tags.yaml")
+          
+          if [ -z "$tag" ] || [ "$tag" == "null" ]; then
+            echo "Warning: Tag not found for $item in category $CATEGORY in values-tags.yaml"
+            return
+          fi
+          
+          echo "Found tag for $item: $tag"
+          
+          # check images section
+          has_images=$(yq e 'has("images")' "$yaml_file")
+          
+          if [ "$has_images" = "true" ]; then
+            # get keys from images
+            for key in $(yq e '.images | keys | .[]' "$yaml_file"); do
+              image_name=$(yq e ".images.$key" "$yaml_file")
+              
+              if [ -n "$image_name" ] && [ "$image_name" != "null" ]; then
+                image_tag="$image_name:$tag"
+                echo "Found image:tag: $image_tag"
+                
+                current_json=$(cat /tmp/images.json)
+                echo "$current_json" | jq --arg img "$image_tag" '. += [$img]' > /tmp/images.json
+              fi
+            done
+          else
+            echo "Warning: No 'images' section found in $yaml_file"
+          fi
+        }
+        
+        # 
+        IFS=',' read -ra ITEMS_ARRAY <<< "$ITEMS"
+        for item in "${ITEMS_ARRAY[@]}"; do
+          # del spaces
+          item=$(echo "$item" | xargs)
+          if [ -n "$item" ]; then
+            process_item "$item"
+          fi
+        done
+        
+        images_json=$(cat /tmp/images.json)
+        echo "images=$(echo $images_json | jq -c .)" >> $GITHUB_OUTPUT
+        
+        count=$(echo $images_json | jq 'length')
+        echo "count=$count" >> $GITHUB_OUTPUT
+        
+        echo "Found $count images to copy"
+
+    - name: Display found images
+      shell: bash
+      run: |
+        echo "Found ${{ steps.find-images.outputs.count }} images:"
+        echo '${{ steps.find-images.outputs.images }}' | jq .
+
+    - name: Configure AWS credentials FROM
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        audience: sts.amazonaws.com
+        role-to-assume: ${{ inputs.aws_role_from }}
+        aws-region: ${{ inputs.aws_region }}
+
+    - name: Login to ECR FROM
+      if: steps.find-images.outputs.count != '0'
+      id: login-source-ecr
+      uses: aws-actions/amazon-ecr-login@v1 
+
+    - name: Get ECR FROM password
+      if: steps.find-images.outputs.count != '0'
+      id: ecr-from-pass
+      shell: bash
+      run: |
+        aws ecr get-login-password --region '${{ inputs.aws_region }}' > "$RUNNER_TEMP/ecr_from_pass"
+
+    - name: Configure AWS credentials TO
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        audience: sts.amazonaws.com
+        role-to-assume: ${{ inputs.aws_role_to }}
+        aws-region: ${{ inputs.aws_region }}
+
+    - name: Login to ECR TO
+      if: steps.find-images.outputs.count != '0'
+      id: login-target-ecr
+      uses: aws-actions/amazon-ecr-login@v1 
+
+    - name: Get ECR TO password
+      if: steps.find-images.outputs.count != '0'
+      id: ecr-to-pass
+      shell: bash
+      run: |
+        aws ecr get-login-password --region '${{ inputs.aws_region }}' > "$RUNNER_TEMP/ecr_to_pass"
+
+    - name: Copy images + signatures to target ECR
+      if: steps.find-images.outputs.count != '0'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        FROM_REG='${{ steps.login-source-ecr.outputs.registry }}'
+        TO_REG='${{ steps.login-target-ecr.outputs.registry }}'
+        AWS_REGION='${{ inputs.aws_region }}'
+
+        cat "$RUNNER_TEMP/ecr_from_pass" | docker login --username AWS --password-stdin "$FROM_REG"
+        cat "$RUNNER_TEMP/ecr_to_pass"   | docker login --username AWS --password-stdin "$TO_REG"
+
+        echo '${{ steps.find-images.outputs.images }}' | jq -r '.[]' | while read -r image_tag; do
+          image_name=${image_tag%:*}
+          tag=${image_tag#*:}
+
+          SOURCE_URI="$FROM_REG/$image_name:$tag"
+          TARGET_URI="$TO_REG/$image_name:$tag"
+
+          echo "Checking if image exists in target ECR: $image_name:$tag"
+          if aws ecr describe-images \
+              --repository-name "$image_name" \
+              --region "$AWS_REGION" \
+              --image-ids "imageTag=$tag" \
+              >/dev/null 2>&1; then
+            echo "⏭️  Image already exists in target ECR, skipping: $TARGET_URI"
+            continue
+          fi
+          
+          echo "Try cosign copy (image+signatures): $SOURCE_URI -> $TARGET_URI"
+          if cosign copy --force "$SOURCE_URI" "$TARGET_URI"; then
+            echo "✅ cosign copy ok: $TARGET_URI"
+          else
+            echo "⚠️ cosign copy failed (maybe no signature). Copying image only: $SOURCE_URI -> $TARGET_URI"
+            crane copy "$SOURCE_URI" "$TARGET_URI"
+            echo "✅ image-only copy ok: $TARGET_URI"
+          fi
+
+          # Remove the extra digest tag (sha256-<digest>) from the TARGET image, keep only "<tag>"
+          DIGEST="$(aws ecr describe-images \
+            --repository-name "$image_name" \
+            --region "$AWS_REGION" \
+            --image-ids "imageTag=$tag" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text 2>/dev/null || true)"
+
+          if [[ -n "${DIGEST:-}" && "$DIGEST" != "None" ]]; then
+            DIGEST_TAG="sha256-${DIGEST#sha256:}"
+            echo "Removing extra digest tag from target: $image_name:$DIGEST_TAG (digest=$DIGEST)"
+            aws ecr batch-delete-image \
+              --repository-name "$image_name" \
+              --region "$AWS_REGION" \
+              --image-ids "imageTag=$DIGEST_TAG" \
+              >/dev/null 2>&1 || true
+
+            # Signature presence + verify (WARN only)
+            SIG_TAG="${DIGEST_TAG}.sig"
+            TARGET_WITH_DIGEST="$TO_REG/$image_name@$DIGEST"
+
+            if aws ecr describe-images \
+                --repository-name "$image_name" \
+                --region "$AWS_REGION" \
+                --image-ids "imageTag=$SIG_TAG" \
+                >/dev/null 2>&1; then
+
+              echo "✅ Signature artifact present: $image_name:$SIG_TAG"
+              echo "Verifying signature (WARN only): $TARGET_WITH_DIGEST"
+
+              if cosign verify "$TARGET_WITH_DIGEST" \
+                  --certificate-identity-regexp="^https://github.com/acme-corp/Acmeparts-Helm-Charts/" \
+                  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+                  >/dev/null 2>&1; then
+                echo "✅ Signature verified OK: $TARGET_WITH_DIGEST"
+              else
+                echo "⚠️ WARN: signature present but verification FAILED for: $TARGET_WITH_DIGEST"
+              fi
+
+            else
+              echo "ℹ️ No signature for $image_name:$tag (expected: $image_name:$SIG_TAG) — copied image only"
+            fi
+
+          else
+            echo "Skipping digest-tag cleanup: couldn't resolve digest for $image_name:$tag in target ECR"
+          fi
+        done

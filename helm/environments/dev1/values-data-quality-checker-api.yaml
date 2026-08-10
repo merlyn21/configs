@@ -1,0 +1,32 @@
+services:
+  app:
+    enabled: true
+  service:
+    enabled: true
+
+images:
+  name_app: acmeparts-data-quality-checker
+
+port_app: 8000
+port_service: 8000
+
+
+tag:
+
+app_resources:
+  resources:
+    limits:
+      cpu: "200m"
+      memory: "500Mi"
+    requests:
+      cpu: "100m"
+      memory: "250Mi"
+
+env:
+  APP_MODE: api
+  APP_ENV: dev1
+  AWS_REGION: us-east-2
+  AWS_APP_CONFIG_APPLICATION: data-quality-checker
+  AWS_APP_CONFIG_ENVIRONMENT: dev1
+  AWS_APP_CONFIG_PROFILE: configuration
+  AWS_APP_CONFIG_POLL_INTERVAL_IN_SECONDS: 15

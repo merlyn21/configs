@@ -1,0 +1,40 @@
+{{- if .Values.services.cron_job.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ printf "%s-cronjob" .Release.Name | trunc 52 | trimSuffix "-" }}
+  labels:
+    app: "{{ .Release.Name }}"
+spec:
+  schedule: "{{ .Values.cron_schedule }}"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: "{{ .Release.Name }}"
+        spec:
+          serviceAccountName: {{ .Values.serviceAccount }}
+          restartPolicy: Never
+          containers:
+            - name: {{ .Release.Name }}-cron-job
+              image: "{{ .Values.images.catalog }}/{{ .Values.images.name_seed }}:{{ .Values.tag }}"
+              {{- if .Values.args }}
+              args:
+              {{- range .Values.args }}
+              - {{ . | quote }}
+              {{- end }}
+              {{- end }}
+              {{- include "app.resources" (dict "resources" .Values.app_resources.resources) | nindent 14 }}
+              imagePullPolicy: Always
+              envFrom:
+                - configMapRef:
+                    name: "{{ .Release.Name }}-env"
+                - secretRef:
+                    name: "{{ .Release.Name }}-env-secret"
+              {{- include "app.workloadEnv" .Values.services.cron_job.env | nindent 14 }}
+{{- end }}

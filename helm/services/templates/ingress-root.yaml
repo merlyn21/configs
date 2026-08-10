@@ -1,0 +1,43 @@
+{{- if .Values.services.graphql.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-root-ingress
+  annotations:
+    alb.ingress.kubernetes.io/group.name: pf-shared-alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/load-balancer-attributes: "idle_timeout.timeout_seconds=120,routing.http.drop_invalid_header_fields.enabled=true"
+    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.cert }},{{ .Values.cert_oidc }},{{ .Values.cert_internal }}
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+
+spec:
+  ingressClassName: "alb"
+
+  rules:
+  - host: {{ .Values.host }}
+    http:
+      paths:
+      - path: /s3
+        pathType: Prefix
+        backend:
+          service:
+            name: acmeparts-importer-service
+            port:
+              number: 10000
+      - path: /delta
+        pathType: Prefix
+        backend:
+          service:
+            name: acmeparts-exporter-delta-service
+            port:
+              number: 10000
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Release.Name }}-service
+            port:
+              number: {{ .Values.port_service }}
+
+{{- end }}

@@ -1,0 +1,144 @@
+name: 05 Get info deploy services
+run-name: Get deploy services from ${{ inputs.environment }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: environment
+        description: Select the environment
+        required: true
+        default: stage
+jobs:
+  get-deployments:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          audience: sts.amazonaws.com
+          role-to-assume: ${{ secrets.AWS_CI_ROLE }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Load environment variables
+        run: |
+          helm version
+          pwd
+          ls -l
+          ENV_FILE="./environments/${{ inputs.environment }}/.env"
+          if [ -f "$ENV_FILE" ]; then
+            echo "Loading environment variables from $ENV_FILE"
+            cat $ENV_FILE >> $GITHUB_ENV
+          else
+            echo "Environment file $ENV_FILE not found!"
+            exit 1
+          fi
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --name $CLUSTER_NAME
+          kubectl get ns
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+
+      - name: Get AWS Account ID
+        id: get-ecr
+        run: |
+          # CLEAN_REGION=$(echo "${{ vars.AWS_REGION }}" | sed 's/^"//;s/"$//')
+          # echo $CLEAN_REGION
+          ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          echo "AWS Account ID: $ACCOUNT_ID"
+          echo "account_id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
+          ECR_URL="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          echo $ECR_URL
+          echo "registry=$ECR_URL" >> $GITHUB_OUTPUT
+        env:
+         AWS_REGION: ${{ vars.AWS_REGION }}
+
+      - name: Get deployed services
+        id: get-deployments
+        run: |
+          kubectl get deployments -n backend \
+            -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.template.spec.containers[0].image}{"\n"}{end}' \
+            > /tmp/deployments.txt
+
+          python3 -c "
+          import os
+
+          lines = open('/tmp/deployments.txt').readlines()
+          parts = []
+          summary_rows = []
+
+          for line in lines:
+            line = line.strip()
+            if not line:
+              continue
+            name, image = line.split(' ', 1)
+            tag = image.split(':')[-1]
+            service = name.replace('acmeparts-', '', 1)
+            parts.append(f'{service}:{tag}')
+            summary_rows.append(f'| \`{service}\` | \`{tag}\` |')
+
+          rows = '|'.join(parts)
+
+          # GITHUB_OUTPUT
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+            f.write(f'rows={rows}\n')
+
+          # GITHUB_STEP_SUMMARY
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+            f.write('## Deployed services\n')
+            f.write('| Service | Tag |\n')
+            f.write('|---------|-----|\n')
+            f.write('\n'.join(summary_rows) + '\n')
+          "
+
+      - name: Send to Slack
+        run: |
+          echo "ROWS: ${{ steps.get-deployments.outputs.rows }}"
+
+          payload=$(python3 -c "
+          import json
+
+          rows_raw = '${{ steps.get-deployments.outputs.rows }}'
+          lines = rows_raw.split('|')
+          text = '\n'.join(
+            '*{}*: \`{}\`'.format(l.split(':')[0], ':'.join(l.split(':')[1:]))
+            for l in lines if l
+          )
+
+          payload = {
+            'blocks': [
+              {
+                'type': 'header',
+                'text': {'type': 'plain_text', 'text': 'Deployed services — ${{ github.event.inputs.environment }}'}
+              },
+              {
+                'type': 'section',
+                'text': {'type': 'mrkdwn', 'text': text}
+              },
+              {
+                'type': 'context',
+                'elements': [{'type': 'mrkdwn', 'text': 'Triggered by *${{ github.actor }}* | <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>'}]
+              }
+            ]
+          }
+          print(json.dumps(payload))
+          ")
+
+          echo "$payload"
+
+          curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H 'Content-Type: application/json' \
+            -d "$payload"
+            

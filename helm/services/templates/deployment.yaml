@@ -1,0 +1,102 @@
+{{- if .Values.services.app.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: "{{ .Release.Name }}"
+    tier: backend
+    project: acmeparts
+    app.kubernetes.io/name: "{{ .Release.Name }}"
+  name: "{{ .Release.Name }}-deployment"
+spec:
+  {{- if not .Values.autoscale_app.enabled }}
+  replicas: {{ .Values.replicas_app }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: "{{ .Release.Name }}"
+  template:
+    metadata:
+      labels:
+        app: "{{ .Release.Name }}"
+        date: "{{ now | unixEpoch }}"
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: "{{ .Release.Name }}"
+      serviceAccountName: {{ .Values.serviceAccount }}
+      {{- if .Values.services.init.enabled }}
+      initContainers:
+        - name: {{ .Release.Name }}-migrations
+          image: "{{ .Values.images.catalog }}/{{ .Values.images.name_migration }}:{{ .Values.tag }}"
+          args:
+            - "-path=/migrations"
+            - "-database=$(DATABASE_URL)"
+            - "up"
+          envFrom:
+            - secretRef:
+                name: "{{ .Release.Name }}-env-secret"
+      {{- end }}
+      containers:
+        - name: {{ .Release.Name }}-app
+          image: "{{ .Values.images.catalog }}/{{ .Values.images.name_app }}:{{ .Values.tag }}"
+          imagePullPolicy: Always
+          {{- include "app.resources" (dict "resources" .Values.app_resources.resources) | nindent 10 }}
+          ports:
+            - containerPort: {{ .Values.port_app }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: "{{ .Release.Name }}-env"
+            - secretRef:
+                name: "{{ .Release.Name }}-env-secret"
+          {{- include "app.workloadEnv" .Values.services.app.env | nindent 10 }}
+          {{- if .Values.liveness.enabled }}
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.port_app }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 2
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.port_app }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2 
+          {{- end }}
+
+{{- if .Values.autoscale_app.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: "{{ .Release.Name }}-deployment-hpa-app"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: "{{ .Release.Name }}-deployment"
+  minReplicas: {{ .Values.hpa_app.replicas.min }}
+  maxReplicas: {{ .Values.hpa_app.replicas.max }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa_app.utilization.cpu }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa_app.utilization.memory }}
+{{- end }}
+{{- end }}

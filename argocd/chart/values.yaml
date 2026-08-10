@@ -1,0 +1,19 @@
+name: test-app
+containerName: test-php-app
+containerPort: 80
+
+rollingUpdate:
+  maxSurge: 1
+  maxUnavailable: 0
+
+readinessProbe:
+  path: /health
+  initialDelaySeconds: 60
+  timeoutSeconds: 5
+
+env:
+  - name: DEMO_GREETING
+    value: "DEMO"
+
+service:
+  port: 80

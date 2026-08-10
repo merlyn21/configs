@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensearch-dashboards
+  namespace: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: os-dash
+  template:
+    metadata:
+      labels:
+        app: os-dash
+    spec:
+      serviceAccountName: acmeparts-access-service-account
+      containers:
+      - name: dashboards
+        image: opensearchproject/opensearch-dashboards:2.12.0
+        env:
+        - name: OPENSEARCH_HOSTS
+          value: '["https://vpc-acmeparts-opensearch-rzdludzpu35ggg57oql3mjqvqu.us-east-2.es.amazonaws.com"]'
+        - name: AWS_REGION
+          value: us-east-2
+        ports:
+        - containerPort: 5601

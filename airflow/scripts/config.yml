@@ -1,0 +1,76 @@
+db:
+  dbname: 'itreestr'
+  user: 'postgres'
+  password: ''
+  host: '192.168.101.55'
+  port: '5432'
+
+telegram:
+  bot_token: ''
+  channel_id: ''
+  url: 'https://api.telegram.org/bot/sendMessage'
+
+yandex:
+  endpoint_url: 'https://storage.yandexcloud.net'
+  aws_key_id: ''
+  aws_secret_key: ''
+  bucket_name: 'agrocorp-gitlab-backups'
+
+dns:
+  api_url: 'https://api.reg.ru/api/regru2/service/get_list'
+  username: 'helpdesk@nimbuscorp.example'
+  password: ''
+
+aws:
+  aws_access_key_id_2: ''
+  aws_secret_access_key_2: ''
+  region_name_2: 'eu-central-1'
+  aws_access_key_id_7: ''
+  aws_secret_access_key_7: ''
+  region_name_7: 'eu-central-1'
+
+regru:
+  host: 'cloud-nimbuscorp.vmcloud.reg.ru'
+  username: 'n.asadulin'
+  password: ''
+  org: 'system'
+  provider: 'REGRU'
+  org_name: ''
+  vdc_name: ''
+
+proxmox:
+  ip: '192.168.2.252'
+  user: 'nasadulin@pve'
+  password: ''
+
+selectel:
+  auth_url: 'https://cloud.api.selcloud.ru/identity/v3'
+  username: 'monitor'
+  password: ''
+  user_domain_name: '100001'
+  project_domain_name: '100001'
+
+selectel2:
+  auth_url: 'https://cloud.api.selcloud.ru/identity/v3'
+  username: 'sa_api'
+  password: ''
+  user_domain_name: '100002'
+  project_domain_name: '100002'
+
+dataline:
+  host: 'dcloud.ru'
+  username: 'admin_nimbus'
+  password: ''
+  provider: 'DATALINE'
+  org: 'nimbus'
+  org_name: 'nimbus'
+  vdc_name: 'nimbus-OST4'
+
+dataline2:
+  host: 'dcloud.ru'
+  username: 'monreestr'
+  password: ''
+  provider: 'DATALINE'
+  org: 'nimbus-2'
+  org_name: 'nimbus-2'
+  vdc_name: 'nimbus-2_vc8'

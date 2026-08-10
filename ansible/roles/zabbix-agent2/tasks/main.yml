@@ -1,0 +1,47 @@
+---
+- name: print
+  debug:
+    var: ansible_distribution|lower
+
+- name: get deb zabbix agent
+  shell: wget https://repo.zabbix.com/zabbix/6.5/{{ ansible_distribution|lower }}/pool/main/z/zabbix-release/zabbix-release_6.5-1%2B{{ ansible_distribution|lower }}{{ ansible_distribution_version }}_all.deb
+  args:
+    chdir: /tmp
+
+- name: install deb
+  shell: dpkg -i /tmp/zabbix-release_6.5-1+*{{ ansible_distribution|lower }}{{ ansible_distribution_version }}_all.deb
+
+- name: update
+  shell: apt update
+
+- name: install zabbix agent 2
+  shell: apt install zabbix-agent2 acl
+
+- name: Generate psk file
+  shell: openssl rand -hex 32 > /etc/zabbix/zabbix_agent2.psk
+
+- name: line insert at the end
+  lineinfile:
+    path: "/etc/zabbix/zabbix_agent2.conf"
+    line: "TLSConnect=psk\nTLSAccept=psk\nTLSPSKFile=/etc/zabbix/zabbix_agent2.psk\nTLSPSKIdentity={{ inventory_hostname }}"
+
+- name: print
+  debug:
+    msg: "{{ inventory_hostname }}"
+
+- name: Replace server
+  replace:
+    path: /etc/zabbix/zabbix_agent2.conf
+    regexp: '127.0.0.1'
+    replace: '{{ zb_server }}'
+
+- name: Replace hostname
+  replace:
+    path: /etc/zabbix/zabbix_agent2.conf
+    regexp: 'Hostname=Zabbix server'
+    replace: 'Hostname={{ inventory_hostname }}'
+
+- name: Restart service zabbix-agent2
+  service:
+    name: zabbix-agent2
+    state: restarted

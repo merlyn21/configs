@@ -1,0 +1,65 @@
+services:
+  app:
+    enabled: true
+    env:
+      AWS_APP_CONFIG_APPLICATION: catalog-grpc-server-default
+  init:
+    enabled: true
+  service:
+    enabled: true
+  service_headless:
+    enabled: true
+  consumer:
+    enabled: true
+    env:
+      AWS_APP_CONFIG_APPLICATION: catalog-kafka-consumer-default
+
+app_resources:
+  resources:
+    limits:
+      cpu: "200m"
+      memory: "100Mi"
+    requests:
+      cpu: "100m"
+      memory: "80Mi"
+
+consumer_resources:
+  resources:
+    limits:
+      cpu: "200m"
+      memory: "100Mi"
+    requests:
+      cpu: "100m"
+      memory: "80Mi"
+
+replicas_cons: 1
+
+liveness:
+  enabled: true
+
+images:
+  name_app: acmeparts-catalog-grpc
+  name_consumer: acmeparts-catalog-consumer
+  name_migration: acmeparts-catalog-migration
+
+tag:
+
+serviceAccount: acmeparts-access-service-account
+
+autoscale_app:
+  enabled: true
+hpa_app:
+  replicas:
+    min: 1
+    max: 3
+  utilization:
+    cpu: 80
+    memory: 80
+
+env:
+  LOG_LEVEL: debug
+  APP_ENV: dev1
+  AWS_REGION: us-east-2
+  AWS_APP_CONFIG_ENVIRONMENT: dev1
+  AWS_APP_CONFIG_PROFILE: configuration
+  AWS_APP_CONFIG_POLL_INTERVAL_IN_SECONDS: 15

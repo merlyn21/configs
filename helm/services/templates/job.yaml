@@ -1,0 +1,38 @@
+{{- if .Values.services.seed.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-job-{{ randAlphaNum 6 | lower }}
+  labels:
+    app: "{{ .Release.Name }}"
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: "{{ .Release.Name }}"
+    spec:
+      {{- if .Values.services.exporter.enabled }}
+      tolerations:
+      - key: "workload"
+        value: "compute-heavy"
+        effect: "NoSchedule"
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount }}
+      restartPolicy: Never
+      containers:
+        - name: {{ .Release.Name }}-seeds
+          image: "{{ .Values.images.catalog }}/{{ .Values.images.name_seed }}:{{ .Values.tag }}"
+          {{- if .Values.args }}
+          args:
+          - "{{ .Values.args }}"
+          {{- end }}
+          {{- include "app.resources" (dict "resources" .Values.app_resources.resources) | nindent 10 }}
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: "{{ .Release.Name }}-env"
+            - secretRef:
+                name: "{{ .Release.Name }}-env-secret"
+          {{- include "app.workloadEnv" .Values.services.seed.env | nindent 10 }}
+{{- end }}

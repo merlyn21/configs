@@ -1,0 +1,77 @@
+name: 04 OIDC deploy to stage and prod
+run-name: OIDC deploy ${{ inputs.environment }}
+
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: environment
+        description: Select the environment
+        required: true
+        default: stage
+
+
+permissions:
+  id-token: write
+  contents: read
+
+
+jobs:
+  copy-images:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Copy images
+      id: copyimg
+      uses: ./.github/actions/cpimagesignitems
+      with:
+        env_name: ${{ github.event.inputs.environment }}
+        aws_region: ${{ vars.AWS_REGION }}
+        aws_role_from: ${{ secrets.AWS_CI_ROLE_FROM }}
+        aws_role_to: ${{ secrets.AWS_CI_ROLE }}
+        category: oidc
+        items: oidc
+
+  deploy-oidc:
+    needs: [copy-images]
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login and prepare
+        id: login
+        uses: ./.github/actions/common-login
+        with:
+          env_name: ${{ github.event.inputs.environment }}
+          aws_region: ${{ vars.AWS_REGION }}
+          aws_role: ${{ secrets.AWS_CI_ROLE }}
+
+      - name: Deploy oidc
+        run: |
+          service="oidc"
+          tag=$(yq eval ".oidc.\"$service\"" ./environments/${{ github.event.inputs.environment }}/values-tags.yaml)
+
+          helm upgrade acmeparts-oidc ./services \
+            --install \
+            --namespace "oidc" \
+            --create-namespace \
+            --values ./environments/${{ github.event.inputs.environment }}/values.yaml \
+            --values ./environments/${{ github.event.inputs.environment }}/values-oidc.yaml \
+            --set images.catalog="${{ steps.login.outputs.registry }}" \
+            --set env-secret.DEV_CLIENT_SHARED_SECRET="${{ secrets.OIDC_DEV_CLIENT_SHARED_SECRET }}" \
+            --set env-secret.GRAPHQL_API_KEY="${{ secrets.OIDC_GRAPHQL_API_KEY }}" \
+            --set env-secret.HUBSPOT_PRIVATE_APP_TOKEN="${{ secrets.OIDC_HUBSPOT_PRIVATE_APP_TOKEN }}" \
+            --set tag=$tag \
+            --debug

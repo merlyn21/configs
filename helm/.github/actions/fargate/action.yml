@@ -1,0 +1,274 @@
+name: "Deploy fargate"
+description: "Deploy fargate"
+
+inputs:
+  image_tag:
+    required: true
+    description: 'Image tag to deploy'
+  environment:
+    required: true
+    description: 'Environment'
+  name_app:
+    required: true  
+    description: 'Application name' 
+  image:
+    required: true
+    description: 'Image name'
+  env_vars:
+    required: false 
+    description: 'Environment variables as JSON array'
+    default: '[]'    
+  command_args:
+    required: false
+    description: 'Command arguments as JSON array'
+    default: ''
+  run:
+    required: true
+    default: ''
+    description: 'Whether to run the task'
+
+  gh_token:
+    required: false
+    description: 'GitHub token'
+  aws_ci_role:
+    required: true
+    description: 'AWS IAM role ARN'
+  postgres_uri_user:
+    required: false
+    description: 'PostgreSQL URI for user DB'
+  postgres_uri_catalog:
+    required: false
+    description: 'PostgreSQL URI for catalog DB'
+  postgres_uri_marketplace:
+    required: false
+    description: 'PostgreSQL URI for marketplace DB'
+  mssql_db_password:
+    required: false
+    description: 'MSSQL database password'
+  s3_source_access_key:
+    required: false
+    description: 'S3 source access key'
+  s3_source_secret_key:
+    required: false
+    description: 'S3 source secret key'
+
+  aws_region:
+    required: true
+    description: 'AWS region'
+  ecs_cluster:
+    required: true
+    description: 'ECS cluster name'
+  ecs_execution_role_arn:
+    required: true
+    description: 'ECS execution role ARN'
+  ecs_task_role_arn:
+    required: true
+    description: 'ECS task role ARN'
+  ecs_subnets:
+    required: true
+    description: 'ECS subnets'
+  ecs_security_groups:
+    required: true
+    description: 'ECS security groups'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        repository: acme-corp/Acmeparts-Helm-Charts
+        token: ${{ inputs.gh_token }}
+
+    - name: Get short image tag
+      shell: bash
+      run: echo "SHORT_IMAGE_TAG=$(echo ${{ inputs.image_tag }} | cut -c1-7)" >> $GITHUB_ENV
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v2
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        audience: sts.amazonaws.com
+        role-to-assume: ${{ inputs.aws_ci_role }}
+        aws-region: ${{ inputs.aws_region }}
+
+
+    - name: Get AWS Account ID
+      id: get-ecr
+      shell: bash
+      run: |
+        ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+        echo "AWS Account ID: $ACCOUNT_ID"
+        echo "account_id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
+        ECR_URL="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        echo $ECR_URL
+        echo "registry=$ECR_URL" >> $GITHUB_OUTPUT
+      env:
+        AWS_REGION: ${{ inputs.aws_region }}
+
+# --set images.catalog="${{ steps.get-ecr.outputs.registry }}"
+
+    - name: Register Task Definition
+      id: register-task-def
+      shell: bash
+      run: |
+        cat > td.json <<'JSON'
+        {
+          "family": "${{ inputs.name_app }}",
+          "networkMode": "awsvpc",
+          "requiresCompatibilities": ["FARGATE"],
+          "cpu": "2048",
+          "memory": "8192",
+          "ephemeralStorage": {"sizeInGiB": 50},
+          "executionRoleArn": "${{ inputs.ecs_execution_role_arn }}",
+          "taskRoleArn": "${{ inputs.ecs_task_role_arn }}",
+          "containerDefinitions": [
+            {
+              "name": "${{ inputs.name_app }}",
+              "image": "${{ steps.get-ecr.outputs.registry }}/${{ inputs.image }}:${{ inputs.image_tag }}",
+              "essential": true,
+              "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                  "awslogs-region": "${{ inputs.aws_region }}",
+                  "awslogs-group": "/ecs/${{ inputs.name_app }}",
+                  "awslogs-stream-prefix": "ecs",
+                  "awslogs-create-group": "true"
+                }
+              }
+            }
+          ]
+        }
+        JSON
+
+        COMMAND_ARGS='${{ inputs.command_args }}'
+
+        if [ -n "$COMMAND_ARGS" ] && [ "$COMMAND_ARGS" != "null" ] && [ "$COMMAND_ARGS" != "" ]; then
+          jq --argjson cmd "$COMMAND_ARGS" '.containerDefinitions[0].command = $cmd' td.json > td_updated.json
+          mv td_updated.json td.json
+        fi
+        jq . td.json
+
+        TD=$(aws ecs register-task-definition --cli-input-json file://td.json --query "taskDefinition.taskDefinitionArn" --output text)
+        echo "TASK_DEF_ARN=$TD" >> $GITHUB_ENV
+        echo "$TD"
+
+    - name: Prepare overrides (ENV)
+      shell: bash
+      run: |
+        BASE_ENV='${{ inputs.env_vars }}'
+        echo $BASE_ENV
+
+        case "${{ inputs.name_app }}" in
+          exporter-company1*)
+            EXTRA_VARS=$(jq -n '[
+              {"name": "S3_COMPANY1_DATA_ACCESS_KEY", "value": "${{ inputs.s3_source_access_key }}"},
+              {"name": "S3_COMPANY1_DATA_SECRET_KEY", "value": "${{ inputs.s3_source_secret_key }}"}
+            ]')
+            ;;
+          
+          exporter-company2*)
+            EXTRA_VARS=$(jq -n '[
+              {"name": "S3_SOURCE_ACCESS_KEY", "value": "${{ inputs.s3_source_access_key }}" },
+              {"name": "S3_SOURCE_SECRET_KEY", "value": "${{ inputs.s3_source_secret_key }}" }
+            ]')
+            ;;
+
+          "exporter-akas"|exporter-mapping*)
+            EXTRA_VARS=$(jq -n '[
+              {"name": "POSTGRES_URL", "value": "${{ inputs.postgres_uri_catalog }}"},
+              {"name": "POSTGRES_CATALOG_URL", "value": "${{ inputs.postgres_uri_catalog }}"},
+              {"name": "POSTGRES_MARKETPLACE_URL", "value": "${{ inputs.postgres_uri_marketplace }}"},
+              {"name": "MSSQL_PASSWORD", "value": "${{ inputs.mssql_db_password }}"}
+            ]')
+            ;;
+
+          "exporter-offers"|"exporter-products"|exporter-oem*|\
+          exporter-user*|exporter-company*|\
+          "exporter-documents"|"exporter-superseding")
+            EXTRA_VARS=$(jq -n '[
+              {"name": "POSTGRES_URI", "value": "${{ inputs.postgres_uri_user }}"},
+              {"name": "DB_PASSWORD", "value": "${{ inputs.mssql_db_password }}"}
+            ]')
+            ;;
+          
+          *)
+            EXTRA_VARS='[]'
+            ;;
+        esac
+
+        OVERRIDES=$(echo "$BASE_ENV" | jq \
+          --argjson extra "$EXTRA_VARS" \
+          '{
+            "containerOverrides": [
+              {
+                "name": "${{ inputs.name_app }}",
+                "environment": (. + $extra)
+              }
+            ]
+          }')
+
+        echo "-------------------"
+        echo $OVERRIDES
+        echo $OVERRIDES | jq '.' > overrides.json
+
+
+    - name: Save overrides to Secrets Manager
+      shell: bash
+      run: |
+        SECRET_NAME="acmeparts/${{ inputs.environment }}/exporter-overrides/${{ inputs.name_app }}"
+        
+        OVERRIDES=$(cat overrides.json | jq -c '.')
+        
+        CONFIG=$(jq -n \
+          --arg image_tag "${{ inputs.image_tag }}" \
+          --arg task_def "${{ env.TASK_DEF_ARN }}" \
+          --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          --arg command_args "${{ inputs.command_args }}" \
+          --argjson overrides "$OVERRIDES" \
+          '{
+            image_tag: $image_tag,
+            task_definition_arn: $task_def,
+            last_updated: $timestamp,
+            overrides: $overrides
+          } + (if ($command_args != "" and $command_args != "null") then {command_args: $command_args} else {} end)')
+        
+        echo "Saving config to Secrets Manager: $SECRET_NAME"
+        echo "$CONFIG" | jq '.'
+        
+        if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" 2>/dev/null; then
+          echo "Updating existing secret..."
+          aws secretsmanager update-secret \
+            --secret-id "$SECRET_NAME" \
+            --secret-string "$CONFIG"
+        else
+          echo "Creating new secret..."
+          aws secretsmanager create-secret \
+            --name "$SECRET_NAME" \
+            --description "Overrides for ${{ inputs.name_app }} in ${{ inputs.environment }}" \
+            --secret-string "$CONFIG" \
+            --tags "Key=Environment,Value=${{ inputs.environment }}" \
+                    "Key=Exporter,Value=${{ inputs.name_app }}" \
+                    "Key=ManagedBy,Value=github-actions"
+        fi
+
+
+    - name: Run task
+      if: ${{ inputs.run == 'true' }}
+      shell: bash
+      run: |
+        echo "${{ inputs.ecs_cluster }}"
+        cat overrides.json
+        aws ecs run-task \
+          --cluster "${{ inputs.ecs_cluster }}" \
+          --task-definition "${{ env.TASK_DEF_ARN }}" \
+          --launch-type FARGATE \
+          --count 1 \
+          --network-configuration "awsvpcConfiguration={subnets=[${{ inputs.ecs_subnets }}],securityGroups=[${{ inputs.ecs_security_groups }}],assignPublicIp=${{ env.ASSIGN_PUBLIC_IP }}}" \
+          --overrides "file://overrides.json"
+      env:
+        ASSIGN_PUBLIC_IP: "DISABLED"
+
+          

@@ -12,9 +12,9 @@ from rec2db import insert_fields
 def is_private_ip(address):
     return any([
         ipaddress.ip_address(address).is_private,
-        ipaddress.ip_address(address) in ipaddress.ip_network('172.16.0.0/12'), # Дополнительная проверка для 172.16.0.0/12
+        ipaddress.ip_address(address) in ipaddress.ip_network('172.16.0.0/12'), # Extra check for 172.16.0.0/12
     ])
-# Проверяем, является ли строка действительным IP-адресом
+# Check whether the string is a valid IP address
 def is_valid_ip(address):
     try:
         ipaddress.ip_address(address)
@@ -24,7 +24,7 @@ def is_valid_ip(address):
 
 
 
-# Указываем параметры для подключения
+# Connection parameters
 host = 'vmware.cloud.director'
 username = 'user'
 password = 'pass'
@@ -33,15 +33,15 @@ password = 'pass'
 cpus = 0
 mems = 0
 
-#org = 'ctrl2go'
+#org = 'nimbuscorp'
 org = 'system'
-api_version = '37.0'  # Версия API Cloud Director, которую вы хотите использовать
+api_version = '37.0'  # Cloud Director API version to use
 
-# Создаем объект клиента
+# Create the client object
 client = Client(host, api_version, verify_ssl_certs=True)
 
 current_time = datetime.now()
-# Авторизуемся
+# Authenticate
 client.set_credentials(BasicLoginCredentials(username, org, password))
 
 orgs = client.get_org_list()

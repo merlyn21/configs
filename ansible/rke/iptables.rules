@@ -1,0 +1,13 @@
+#!/bin/bash
+
+iptables -A PREROUTING -t nat -p tcp -d 192.168.10.10 --dport 80 -m statistic --mode random --probability 0.33 -j DNAT --to-destination 192.168.10.15:31701
+iptables -A PREROUTING -t nat -p tcp -d 192.168.10.10 --dport 80 -m statistic --mode random --probability 0.5  -j DNAT --to-destination 192.168.10.16:31701
+iptables -A PREROUTING -t nat -p tcp -d 192.168.10.10 --dport 80 -j DNAT --to-destination 192.168.10.17:31701
+iptables -A PREROUTING -t nat -p tcp -d 192.168.10.10 --dport 443 -m statistic --mode random --probability 0.33 -j DNAT --to-destination 192.168.10.15:30364
+iptables -A PREROUTING -t nat -p tcp -d 192.168.10.10 --dport 443 -m statistic --mode random --probability 0.5  -j DNAT --to-destination 192.168.10.16:30364
+iptables -A PREROUTING -t nat -p tcp -d 192.168.10.10 --dport 443 -j DNAT --to-destination 192.168.10.17:30364
+
+iptables -t filter -A FORWARD -p tcp -d 192.168.10.0/24 --dport 31701 -j ACCEPT
+iptables -t filter -A FORWARD -p tcp -d 192.168.10.0/24 --dport 30364 -j ACCEPT
+iptables -t filter -A FORWARD -p tcp -s 192.168.10.0/24 --dport 31701 -j ACCEPT
+iptables -t filter -A FORWARD -p tcp -s 192.168.10.0/24 --dport 30364 -j ACCEPT

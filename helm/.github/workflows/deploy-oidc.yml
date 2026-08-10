@@ -1,0 +1,114 @@
+name: Deploy oidc to dev
+
+on:
+  # workflow_dispatch:
+  workflow_call:
+    inputs:
+      image_tag:
+        required: true
+        type: string
+      environment:
+        required: true
+        type: string
+      name_app:
+        required: true
+        type: string   
+      args:
+        required: false
+        type: string     
+
+    secrets:
+      GH_TOKEN:
+        required: true
+      AWS_CI_ROLE:
+        required: true
+      JWKS_DEV:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # ref: ${{ inputs.environment }}
+          repository: acme-corp/Acmeparts-Helm-Charts
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Get short image tag
+        run: |
+          echo ${{ inputs.image_tag }} 
+          echo "SHORT_IMAGE_TAG=$(echo ${{ inputs.image_tag }} | cut -c1-7)" >> $GITHUB_ENV
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          audience: sts.amazonaws.com
+          role-to-assume: ${{ secrets.AWS_CI_ROLE }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Load environment variables
+        run: |
+          pwd
+          ls -l
+          ENV_FILE="./environments/dev1/.env"
+          if [ -f "$ENV_FILE" ]; then
+            echo "Loading environment variables from $ENV_FILE"
+            cat $ENV_FILE >> $GITHUB_ENV
+          else
+            echo "Environment file $ENV_FILE not found!"
+            exit 1
+          fi
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --name $CLUSTER_NAME
+          kubectl get nodes
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+
+      - name: Get AWS Account ID
+        id: get-ecr
+        run: |
+          # CLEAN_REGION=$(echo "${{ vars.AWS_REGION }}" | sed 's/^"//;s/"$//')
+          # echo $CLEAN_REGION
+          ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          echo "AWS Account ID: $ACCOUNT_ID"
+          echo "account_id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
+          ECR_URL="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          echo $ECR_URL
+          echo "registry=$ECR_URL" >> $GITHUB_OUTPUT
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+
+      - name: Deploy Helm chart
+        run: |
+          TAG_dev1=$(aws ssm get-parameter \
+            --name "/oidc/dev1/image-tag" \
+            --query "Parameter.Value" \
+            --output text)
+          echo $TAG_dev1
+
+          helm upgrade acmeparts-oidc ./oidc \
+            --install \
+            --create-namespace \
+            --namespace "oidc" \
+            -f ./oidc/values.yaml \
+            --set image.repository="${{ steps.get-ecr.outputs.registry }}/acmeparts-oidc" \
+            --set environments[0].tag="${TAG_dev1}" \
+            --debug
+
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+            

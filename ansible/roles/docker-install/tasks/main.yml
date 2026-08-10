@@ -1,0 +1,33 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for docker-install
+    - name: Update packages
+      shell: apt update
+
+    - name: install curl
+      shell: apt install curl -y
+
+    - name: get get-docker.sh
+      shell: 'curl -fsSL https://get.docker.com -o /tmp/get-docker.sh'
+
+    - name: install docker
+      shell: sh /tmp/get-docker.sh
+
+#    - name: add user to group docker
+#      shell: /usr/sbin/usermod -G sudo,docker user
+
+    - name: test docker
+      shell: docker ps
+      register: result
+
+    - name: Show result
+      debug:
+        var: result.stdout
+
+    - name: Copy daemon.json
+      copy:
+        src: daemon.json
+        dest: /etc/docker/daemon.json
+
+    - name: restart docker
+      shell: systemctl restart docker

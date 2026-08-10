@@ -1,0 +1,35 @@
+services:
+  app:
+    enabled: true
+  service:
+    enabled: true
+  init:
+    enabled: true
+
+app_resources:
+  resources:
+    limits:
+      cpu: "200m"
+      memory: "100Mi"
+    requests:
+      cpu: "100m"
+      memory: "80Mi"
+
+liveness:
+  enabled: true
+
+images:
+  name_app: acmeparts-files
+  name_migration: acmeparts-files-migration
+
+tag: 
+
+env:
+  LOG_LEVEL: debug
+  APP_ENV: dev1
+  AWS_REGION: us-east-2
+  AWS_APP_CONFIG_APPLICATION: files
+  AWS_APP_CONFIG_ENVIRONMENT: dev1
+  AWS_APP_CONFIG_PROFILE: configuration
+  AWS_APP_CONFIG_POLL_INTERVAL_IN_SECONDS: 15
+  AWS_APP_CONFIG_SECRETS_CACHE_TTL: 5m

@@ -1,0 +1,68 @@
+services:
+  grafana:
+    image: grafana/grafana-oss:latest
+    volumes:
+      - /opt/zabbix/grafana/data:/var/lib/grafana
+      - ./grafana-dh/provisioning/:/etc/grafana/provisioning/
+      - /opt/zabbix/grafana/log:/var/log/grafana
+    environment:
+      - GF_PLUGINS_PREINSTALL=alexanderzobnin-zabbix-app
+    ports:
+      - '127.0.0.1:3000:3000'
+
+  loki:
+    image: grafana/loki:2.8.0
+    ports:
+      - "127.0.0.1:3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - /opt/zabbix/loki-config:/etc/loki
+      - /opt/zabbix/loki:/loki
+
+
+#prometeus----------
+  blackbox-exporter:
+    image: prom/blackbox-exporter
+    volumes:
+      - ./blackbox.yml:/config/blackbox.yml
+    container_name: blackbox-exporter
+    hostname: blackbox-exporter
+    command:
+      - '--config.file=/config/blackbox.yml'
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus_data:/prometheus
+    container_name: prometheus
+    hostname: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    environment:
+      TZ: "Europe/Moscow"
+
+  node-exporter:
+    image: prom/node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    container_name: exporter
+    hostname: exporter
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    restart: unless-stopped
+    environment:
+      TZ: "Europe/Moscow"
+
+

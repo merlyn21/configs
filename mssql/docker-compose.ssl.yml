@@ -1,0 +1,38 @@
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    container_name: mssql
+    network_mode: "host"
+    hostname: mssql-server
+#    ports:
+#      - "1433:1433"
+    environment:
+      - ACCEPT_EULA=${ACCEPT_EULA}
+      - SA_PASSWORD=${SA_PASSWORD}
+      - MSSQL_PID=${MSSQL_PID}
+      - MSSQL_ENCRYPT_CONNECTIONS=${MSSQL_ENCRYPT_CONNECTIONS}
+
+    volumes:
+      - ./certs:/var/opt/mssql/certs:ro
+      - ./mssql_data/data:/var/opt/mssql/data
+      - ./mssql_log:/var/opt/mssql/log
+      - ./mssql_secrets:/var/opt/mssql/secrets
+
+    command: |
+      /bin/bash -c "
+      # Copy certificates
+      if [ -f /var/opt/mssql/certs/mssql.pem ]; then
+        cp /var/opt/mssql/certs/mssql.* /var/opt/mssql/data/
+        chmod 600 /var/opt/mssql/data/mssql.key
+        chmod 644 /var/opt/mssql/data/mssql.pem
+        chown 10001:0 /var/opt/mssql/data/mssql.*
+      fi
+
+      # Configure SSL
+      /opt/mssql/bin/mssql-conf set network.forceencryption 1 || true
+      /opt/mssql/bin/mssql-conf set network.tlscert /var/opt/mssql/data/mssql.pem || true
+      /opt/mssql/bin/mssql-conf set network.tlskey /var/opt/mssql/data/mssql.key || true
+
+      # Start SQL Server
+      /opt/mssql/bin/sqlservr
+      "

@@ -1,0 +1,55 @@
+name: Prepare Tag and Commit Hash
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: false
+        type: string
+        default: ''
+      name_app:
+        required: false
+        type: string
+        default: ''
+      repository:
+        required: false
+        type: string
+        default: ${{ github.repository }}
+      ref:
+        required: false
+        type: string
+        default: ${{ github.ref }}
+    outputs:
+      tag:
+        value: ${{ jobs.prepare.outputs.tag }}
+      short_commit_hash:
+        value: ${{ jobs.prepare.outputs.short_commit_hash }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    outputs:
+      tag: ${{ steps.timestamp.outputs.TAG }}
+      short_commit_hash: ${{ steps.commit.outputs.SHORT_HASH }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.repository }}
+        ref: ${{ inputs.ref }}
+
+    - name: Generate timestamp
+      id: timestamp
+      run: |
+        TIMESTAMP=$(date +'%Y%m%d.%H%M')
+        if [ -n "${{ inputs.name_app }}" ]; then
+          echo "TAG=${{ inputs.name_app }}-${TIMESTAMP}" >> $GITHUB_OUTPUT
+        else
+          echo "TAG=${TIMESTAMP}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Get commit hash
+      id: commit
+      run: echo "SHORT_HASH=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT

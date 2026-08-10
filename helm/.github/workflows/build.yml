@@ -1,0 +1,105 @@
+name: Build image
+run-name: Build image with tag ${{ inputs.image_tag }}
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        required: true
+        type: string
+      environment:
+        required: true
+        type: string
+      name_app:
+        required: true
+        type: string
+      project:
+        required: true
+        type: string
+      dockerfile:
+        required: true
+        type: string
+    secrets:
+      GH_TOKEN:
+        required: true
+      PAT_TOKEN:
+        required: false
+      AWS_CI_ROLE:
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: tag ${{ inputs.image_tag }}
+      run: echo ${{ inputs.image_tag }}
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        audience: sts.amazonaws.com
+        role-to-assume: ${{ secrets.AWS_CI_ROLE }}
+        aws-region: ${{ vars.AWS_REGION }}
+
+    - name: Login to ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Install Cosign
+      uses: sigstore/cosign-installer@v3.7.0
+      with:
+        cosign-release: 'v2.4.1'
+
+    - name: Debug ECR Registry
+      run: |
+        ls -la
+        echo "${{ github.event.inputs.catalog }}"
+        echo "ECR Registry: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_CATALOG_NAME }}:${{ inputs.image_tag }}"
+
+    - name: Build and push Docker image
+      id: build-image
+      env:
+        GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+      run: |
+        ECR_CATALOG="${{ inputs.project }}-${{ inputs.name_app }}"
+        IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/$ECR_CATALOG:${{ inputs.image_tag }}"
+        
+        echo "Building image: $IMAGE_URI"
+
+        docker build \
+          --provenance=false \
+          --secret id=github_token,env=GITHUB_TOKEN \
+          -t $IMAGE_URI \
+          . -f ${{ inputs.dockerfile }}
+
+        docker push $IMAGE_URI
+
+    - name: Get digest and sign
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      run: |
+        ECR_CATALOG="${{ inputs.project }}-${{ inputs.name_app }}"
+        IMAGE_URI="$ECR_REGISTRY/$ECR_CATALOG:${{ inputs.image_tag }}"
+        
+        DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $IMAGE_URI | cut -d'@' -f2)
+        IMAGE_WITH_DIGEST="$ECR_REGISTRY/$ECR_CATALOG@$DIGEST"
+        
+        echo "Signing: $IMAGE_WITH_DIGEST"
+        
+        cosign sign --yes \
+          --oidc-issuer=https://token.actions.githubusercontent.com \
+          $IMAGE_WITH_DIGEST
+        
+        cosign verify $IMAGE_WITH_DIGEST \
+          --certificate-identity-regexp="^https://github.com/acme-corp/Acmeparts-Helm-Charts/" \
+          --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+        
+        echo "✅ Signed and verified: $IMAGE_WITH_DIGEST"

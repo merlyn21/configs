@@ -1,0 +1,21 @@
+namespace: app
+env_label: stage
+
+image:
+  repository: cr.yandex/crpm0vvs5g97ip7a7ged/app
+  tag: v1.2.3
+  pullPolicy: Always
+
+resources:
+  requests:
+    memory: 300Mi
+    cpu: 150m
+  limits:
+    memory: 400Mi
+    cpu: 300m
+
+hpa:
+  minReplicas: 1
+  maxReplicas: 3
+  cpuUtilization: 90
+  memoryUtilization: 90

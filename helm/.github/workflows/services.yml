@@ -1,0 +1,127 @@
+name: Deploy service to dev
+
+on:
+  # workflow_dispatch:
+  workflow_call:
+    inputs:
+      image_tag:
+        required: true
+        type: string
+      environment:
+        required: true
+        type: string
+      name_app:
+        required: true
+        type: string   
+      args:
+        required: false
+        type: string     
+
+    secrets:
+      GH_TOKEN:
+        required: true
+      AWS_CI_ROLE:
+        required: true
+      POSTGRES_URI:
+        required: false
+      RO_POSTGRES_URI:
+        required: false
+      AWS_ACCESS_KEY_ID_OS:
+        required: false
+      AWS_SECRET_ACCESS_KEY_OS:
+        required: false
+      AWS_REGION_OS:
+        required: false
+      S3_SECRET:
+        required: false
+      S3_ACCESS_KEY:
+        required: false
+      JWT_PRIVATE_KEY:
+        required: false
+      JWT_PUBLIC_KEY:
+        required: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # ref: ${{ inputs.environment }}
+          repository: acme-corp/Acmeparts-Helm-Charts
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Get short image tag
+        run: |
+          echo ${{ inputs.image_tag }} 
+          echo "SHORT_IMAGE_TAG=$(echo ${{ inputs.image_tag }} | cut -c1-7)" >> $GITHUB_ENV
+
+      # - name: Set up Helm
+      #   uses: azure/setup-helm@v4
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          audience: sts.amazonaws.com
+          role-to-assume: ${{ secrets.AWS_CI_ROLE }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Load environment variables
+        run: |
+          helm version
+          pwd
+          ls -l
+          ENV_FILE="./environments/${{ inputs.environment }}/.env"
+          if [ -f "$ENV_FILE" ]; then
+            echo "Loading environment variables from $ENV_FILE"
+            cat $ENV_FILE >> $GITHUB_ENV
+          else
+            echo "Environment file $ENV_FILE not found!"
+            exit 1
+          fi
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --name $CLUSTER_NAME
+          kubectl get nodes
+          cat ./environments/${{ inputs.environment }}/values-${{ inputs.name_app }}.yaml
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+
+      - name: Get AWS Account ID
+        id: get-ecr
+        run: |
+          # CLEAN_REGION=$(echo "${{ vars.AWS_REGION }}" | sed 's/^"//;s/"$//')
+          # echo $CLEAN_REGION
+          ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          echo "AWS Account ID: $ACCOUNT_ID"
+          echo "account_id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
+          ECR_URL="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          echo $ECR_URL
+          echo "registry=$ECR_URL" >> $GITHUB_OUTPUT
+        env:
+         AWS_REGION: ${{ vars.AWS_REGION }}
+
+      - name: Deploy Helm chart
+        run: |
+          helm upgrade acmeparts-${{ inputs.name_app }} ./services \
+            --install \
+            --create-namespace \
+            --namespace "backend" \
+            --values ./environments/${{ inputs.environment }}/values.yaml \
+            --values ./environments/${{ inputs.environment }}/values-${{ inputs.name_app }}.yaml \
+            --set tag=${{ inputs.image_tag }} \
+            --set args="${{ inputs.args }}" \
+            --set images.catalog="${{ steps.get-ecr.outputs.registry }}" \
+            --set env-secret.DATABASE_URL=${{ secrets.POSTGRES_URI }} \
+            --set env-secret.AWS_REGION=${{ secrets.AWS_REGION_OS }} \
+            --debug
+            

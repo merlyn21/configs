@@ -4,7 +4,7 @@
     - name: make sudo user
       shell: echo 'user ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-user
 
-    - name: Добавить публичный SSH ключ для пользователя
+    - name: Add public SSH key for the user
       authorized_key:
         user: user
         state: present
@@ -39,13 +39,13 @@
       ansible.builtin.command: docker ps
       register: result
 
-    - name: Перезагрузка сервера
+    - name: Reboot the server
       ansible.builtin.reboot:
-        msg: "Перезагружаем сервер для применения важных обновлений"
-        connect_timeout: 5 
-        reboot_timeout: 100  # Максимальное время ожидания перезагрузки
-        pre_reboot_delay: 0  # Задержка перед перезагрузкой
-        post_reboot_delay: 15  # Задержка после перезагрузки, прежде чем пытаться подключиться
+        msg: "Rebooting the server to apply important updates"
+        connect_timeout: 5
+        reboot_timeout: 100  # Maximum time to wait for the reboot
+        pre_reboot_delay: 0  # Delay before rebooting
+        post_reboot_delay: 15  # Delay after rebooting, before attempting to connect
         test_command: uptime
 
     - name: View test

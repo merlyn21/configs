@@ -13,7 +13,7 @@ db_params = {
 
 def insert_fields(orgname, vdcname, vmname, ip_real, status, num_cpus, memory_mb, ip_local, datestamp, description, ostype):
     try:
-        # Подключение к базе данных
+        # Connect to the database
         conn = psycopg2.connect(**db_params)
         cur = conn.cursor()
 
@@ -35,13 +35,13 @@ def insert_fields(orgname, vdcname, vmname, ip_real, status, num_cpus, memory_mb
 
 #        print(f"Inserting: {orgname}, {vdcname}, {vmname}, {ip_real}, {status}, {num_cpus}, {memory_mb}, {ip_local}, {datestamp}, {description}, {ostype}")
 #        print(upsert_query)
-        # Выполнение запроса
+        # Execute the query
         cur.execute(upsert_query, (orgname, vdcname, vmname, ip_real, status, num_cpus, memory_mb, ip_local, datestamp, description, ostype))
 
-        # Фиксация изменений
+        # Commit the changes
         conn.commit()
 
-        # Закрытие курсора и соединения
+        # Close the cursor and connection
         cur.close()
         conn.close()
 

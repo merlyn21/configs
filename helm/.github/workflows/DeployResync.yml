@@ -1,0 +1,118 @@
+name: Deploy job fulfillment-resync-payments
+run-name: Deploy fulfillment-resync-payments - ${{ inputs.environment }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: environment
+        description: Select the environment
+        required: true
+        default: stage
+      dry_run:
+        type: boolean
+        default: true
+      currency:
+        type: string
+        default: ""
+      payment_method_code:
+        type: string
+        default: ""
+      payment_date:
+        type: string
+        required: false
+        default: ""
+      bp_order_ids:
+        type: string
+        required: false
+        default: ""
+      start_date:
+        type: string
+        required: false
+        default: ""
+      end_date:
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+
+jobs:
+  copy-images:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Copy images
+      id: copyimg
+      uses: ./.github/actions/cpimagesignitems
+      with:
+        env_name: ${{ github.event.inputs.environment }}
+        aws_region: ${{ vars.AWS_REGION }}
+        aws_role_from: ${{ secrets.AWS_CI_ROLE_FROM }}
+        aws_role_to: ${{ secrets.AWS_CI_ROLE }}
+        category: jobs
+        items: fulfillment-resync-payments
+
+  deploy:
+    needs: [copy-images]
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login and prepare
+        id: login
+        uses: ./.github/actions/common-login
+        with:
+          env_name: ${{ github.event.inputs.environment }}
+          aws_region: ${{ vars.AWS_REGION }}
+          aws_role: ${{ secrets.AWS_CI_ROLE }}
+
+      - name: Prepare arguments
+        run: |
+          ARGS=()
+          [[ "${{ inputs.dry_run }}" == "true" ]] && ARGS+=("--dry-run")
+          [[ -n "${{ inputs.currency }}" ]] && ARGS+=("--currency=${{ inputs.currency }}")          
+          [[ -n "${{ inputs.payment_method_code }}" ]] && ARGS+=("--payment-method-code=${{ inputs.payment_method_code }}")          
+          [[ -n "${{ inputs.payment_date }}" ]] && ARGS+=("--payment-date=${{ inputs.payment_date }}")          
+          [[ -n "${{ inputs.bp_order_ids }}" ]] && ARGS+=("--bp-order-ids=${{ inputs.bp_order_ids }}")          
+          [[ -n "${{ inputs.start_date }}" ]] && ARGS+=("--start-date=${{ inputs.start_date }}")          
+          [[ -n "${{ inputs.end_date }}" ]] && ARGS+=("--end-date=${{ inputs.end_date }}")
+          
+          echo "args:" > /tmp/override-values.yaml
+          for arg in "${ARGS[@]}"; do
+            echo "  - \"${arg}\"" >> /tmp/override-values.yaml
+          done
+          
+          echo "===== Generated override-values.yaml ====="
+          cat /tmp/override-values.yaml
+          echo "=========================================="          
+
+          
+      - name: Deploy script
+        run: |
+          tag=$(yq eval ".jobs.fulfillment-resync-payments" ./environments/${{ github.event.inputs.environment }}/values-tags.yaml)
+          helm upgrade acmeparts-fulfillment-resync-payments ./services \
+            --install \
+            --create-namespace \
+            --namespace "backend" \
+            --values ./environments/${{ github.event.inputs.environment }}/values.yaml \
+            --values ./environments/${{ github.event.inputs.environment }}/values-fulfillment-resync-payments.yaml \
+            --set images.catalog="${{ steps.login.outputs.registry }}" \
+            --set tag=$tag \
+            -f /tmp/override-values.yaml \
+            --debug

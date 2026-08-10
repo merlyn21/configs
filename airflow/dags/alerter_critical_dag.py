@@ -1,0 +1,33 @@
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from airflow.utils.dates import days_ago
+
+from send2tg import send_failure
+import pendulum
+import datetime
+
+default_args = {
+    'owner': 'nasadulin',
+    'start_date': datetime.datetime(2024, 9, 1),
+    'depends_on_past': False,
+}
+
+with DAG(
+    "alerter_critical", # Identifier, shown in the console
+    default_args = default_args,
+    description = "Alerter critical fields",
+    schedule_interval='5 10,17 * * *', # Monthly execution
+#    start_date = datetime(2024, 8, 1), # When to start the scheduled execution
+    catchup=False,
+    tags=["REGRU"],
+    on_failure_callback=send_failure
+) as dag1:
+
+    t1 = BashOperator(
+        task_id="alerter_critical", # Task identifier for tracking in the console
+        bash_command="cd /opt/airflow/scripts/alerters && python3 alerter_critical.py",
+        dag = dag1
+    )
+
+t1

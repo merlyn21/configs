@@ -1,0 +1,245 @@
+name: 01 Deploy services
+run-name: "Deploy services to ${{ inputs.environment }} ${{ inputs.triggered_by }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        description: Select the environment
+        required: true
+        default: stage
+        options:
+          - stage
+          - prod
+      copyi:
+        description: 'copy images'
+        type: boolean
+        required: false
+        default: true
+
+      deploy_all_services:
+        description: 'All services'
+        type: boolean
+        default: false
+      deploy_brightpearl_connector:
+        description: 'brightpearl-connector'
+        type: boolean
+        default: false
+      deploy_catalog:
+        description: 'catalog'
+        type: boolean
+        default: false
+      deploy_catalog_ds:
+        description: 'catalog-ds'
+        type: boolean
+        default: false
+      deploy_fulfillment:
+        description: 'fulfillment'
+        type: boolean
+        default: false
+      deploy_graphql:
+        description: 'graphql'
+        type: boolean
+        default: false
+      deploy_importer:
+        description: 'importer'
+        type: boolean
+        default: false
+      deploy_importer_file:
+        description: 'importer-file'
+        type: boolean
+        default: false
+      deploy_internal_api_gateway:
+        description: 'internal-api-gateway'
+        type: boolean
+        default: false
+      deploy_marketplace:
+        description: 'marketplace'
+        type: boolean
+        default: false
+      deploy_company2_connector:
+        description: 'company2-connector'
+        type: boolean
+        default: false
+      deploy_oem:
+        description: 'oem'
+        type: boolean
+        default: false
+      deploy_search:
+        description: 'search'
+        type: boolean
+        default: false
+      deploy_search_indexer:
+        description: 'search-indexer'
+        type: boolean
+        default: false
+      deploy_shopify_connector:
+        description: 'shopify-connector'
+        type: boolean
+        default: false
+      deploy_users:
+        description: 'users'
+        type: boolean
+        default: false
+      deploy_order_lists:
+        description: 'order-lists'
+        type: boolean
+        default: false
+      triggered_by:
+        description: 'Who triggered'
+        required: false
+        default: ''
+
+permissions:
+  id-token: write
+  contents: read
+
+
+jobs:
+  copy-images:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    outputs:
+      services: ${{ steps.services.outputs.items }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Build services list
+      id: services
+      env:
+        INPUTS_JSON: ${{ toJSON(github.event.inputs) }}
+      run: |
+        services=()
+        
+        # include all if select All
+        if [[ "${{ github.event.inputs.deploy_all_services }}" == "true" ]]; then
+          services=($(echo "$INPUTS_JSON" | jq -r 'to_entries | .[] | select(.key | startswith("deploy_") and . != "deploy_all_services") | .key | sub("^deploy_"; "") | gsub("_"; "-")'))
+        else
+          # include only select (where value == "true")
+          services=($(echo "$INPUTS_JSON" | jq -r 'to_entries | .[] | select(.key | startswith("deploy_") and . != "deploy_all_services") | select(.value == "true") | .key | sub("^deploy_"; "") | gsub("_"; "-")'))
+
+          if [ ${#services[@]} -eq 0 ]; then
+            echo "::error::No services selected for deployment"
+            exit 1
+          fi
+        fi
+        
+        # to string
+        items_list=$(IFS=,; echo "${services[*]}")
+        echo "items=$items_list" >> $GITHUB_OUTPUT
+        echo "Selected services: $items_list"
+
+    - name: Copy images
+      id: copyimg
+      if: github.event.inputs.copyi == 'true'
+      uses: ./.github/actions/cpimagesignitems
+      with:
+        env_name: ${{ github.event.inputs.environment }}
+        aws_region: ${{ vars.AWS_REGION }}
+        aws_role_from: ${{ secrets.AWS_CI_ROLE_FROM }}
+        aws_role_to: ${{ secrets.AWS_CI_ROLE }}
+        category: services
+        items: ${{ steps.services.outputs.items }}
+
+  deploy-services:
+    needs: [copy-images]
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login and prepare
+        id: login
+        uses: ./.github/actions/common-login
+        with:
+          env_name: ${{ github.event.inputs.environment }}
+          aws_region: ${{ vars.AWS_REGION }}
+          aws_role: ${{ secrets.AWS_CI_ROLE }}
+
+      - name: Deploy services
+        run: |
+          set -euo pipefail
+
+          DEPLOY_LOG="/tmp/deploy_results.txt"
+
+          deploy_service() {
+            local service=$1
+            local environment="${{ github.event.inputs.environment }}"
+            local db_name="${service//-/_}"
+
+            echo "Deploying $service to $environment..."
+
+            local service_tag=$(yq eval ".services.\"$service\"" ./environments/$environment/values-tags.yaml)
+            
+            # check tag
+            if [[ -z "$service_tag" || "$service_tag" == "null" ]]; then
+              echo "ERROR: Tag not found for service $service in values-tags.yaml"
+              exit 1
+            fi
+            
+            echo "Using tag: $service_tag for service $service"
+            
+            # base parameters
+            local helm_args=(
+              --install
+              --create-namespace
+              --namespace "backend"
+              --values ./environments/${{ github.event.inputs.environment }}/values.yaml
+              --values ./environments/${{ github.event.inputs.environment }}/values-$service.yaml
+              --set images.catalog="${{ steps.login.outputs.registry }}"
+              --set tag="$service_tag"
+              --debug
+            )
+            
+            # additional parameters
+            case "$service" in
+              oem|catalog|catalog-ds|marketplace|fulfillment|order-lists|users|\
+              search|search-indexer|importer|importer-file|internal-api-gateway|\
+              company2-connector|brightpearl-connector|shopify-connector)
+                helm_args+=(
+                  --set env-secret.DATABASE_URL="${{ secrets.POSTGRES_URI }}/$db_name"
+                  --set env-secret.POSTGRES_URI="${{ secrets.POSTGRES_URI }}/$db_name"
+                  --set env-secret.RO_POSTGRES_URI="${{ secrets.RO_POSTGRES_URI }}/$db_name"
+                )
+                ;;
+            esac
+            
+            helm upgrade acmeparts-$service ./services "${helm_args[@]}"
+
+            echo "$service:$service_tag" >> "$DEPLOY_LOG"
+          }
+
+          IFS=',' read -ra services <<< "${{ needs.copy-images.outputs.services }}"
+          for service in "${services[@]}"; do
+            deploy_service "$service"
+          done
+          
+          echo "Deployment completed!"
+
+      - name: Deployment summary
+        run: |
+          DEPLOY_LOG="/tmp/deploy_results.txt"
+          
+          if [[ ! -f "$DEPLOY_LOG" ]]; then
+            echo "No services were deployed."
+            exit 0
+          fi
+          
+          echo "## 🚀 Deployed services" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | Tag |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-----|" >> $GITHUB_STEP_SUMMARY
+          
+          while IFS=':' read -r service tag; do
+            echo "| \`$service\` | \`$tag\` |" >> $GITHUB_STEP_SUMMARY
+            echo "  $service -> $tag"
+          done < "$DEPLOY_LOG"
