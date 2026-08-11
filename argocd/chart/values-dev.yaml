@@ -6,6 +6,10 @@ image:
   tag: daff17e0
   pullPolicy: Always
 
+readinessProbe:
+  path: /
+
+
 resources:
   requests:
     memory: 200Mi
