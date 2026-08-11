@@ -2,8 +2,8 @@ namespace: app
 env_label: dev
 
 image:
-  repository: cr.yandex/crpm0vvs5g97ip7a7ged/app
-  tag: latest
+  repository: cr.yandex/crpquspk91tkntu4u9a8/front
+  tag: daff17e0
   pullPolicy: Always
 
 resources:
